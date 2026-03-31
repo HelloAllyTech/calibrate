@@ -137,3 +137,5 @@ data
 
 # MkDocs build output
 site/
+
+.specstory
