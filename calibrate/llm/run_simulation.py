@@ -517,7 +517,7 @@ async def run_simulation(
 
 
 async def run_simulation_with_agent(
-    agent,
+    agent: "TextAgentConnection",
     user_system_prompt: str,
     evaluation_criteria: list[dict],
     agent_speaks_first: bool = True,

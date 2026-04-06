@@ -5,7 +5,7 @@ from typing import List, TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
-    from calibrate.connections import TextAgentConnection
+    from calibrate.connections import TextAgentConnection  # noqa: F401
 import os
 from os.path import join, exists
 import json
@@ -472,40 +472,29 @@ async def run_test(
     }
 
 
-async def call_text_agent(messages: List[dict], agent) -> dict:
-    """Call an external text agent with a messages array and return its output.
-
-    Supports both :class:`~calibrate.connections.TextAgentConnection` (HTTP POST)
-    and plain async callables ``(messages) -> dict``.
-
-    The agent must return (or the HTTP response must contain) a dict with:
-        - ``"response"``: str or None — the agent's text reply
-        - ``"tool_calls"``: list of ``{"tool": str, "arguments": dict}``
+async def call_text_agent(
+    messages: List[dict],
+    agent: "TextAgentConnection",
+) -> dict:
+    """POST a messages array to an external agent and return its output.
 
     Args:
         messages: List of ``{"role": ..., "content": ...}`` dicts.
-        agent: A :class:`~calibrate.connections.TextAgentConnection` or async callable.
+        agent: A :class:`~calibrate.connections.TextAgentConnection`.
 
     Returns:
         dict with ``response`` (str | None) and ``tool_calls`` (list) keys.
     """
-    import inspect
-    from calibrate.connections import TextAgentConnection
-
-    if callable(agent) and not isinstance(agent, TextAgentConnection):
-        result = await agent(messages)
-        if isinstance(result, str):
-            return {"response": result, "tool_calls": []}
-        return result
-
-    # HTTP POST
-    payload = {"messages": messages}
-    headers = {"Content-Type": "application/json"}
+    req_headers = {"Content-Type": "application/json"}
     if agent.headers:
-        headers.update(agent.headers)
+        req_headers.update(agent.headers)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(agent.url, json=payload, headers=headers)
+        resp = await client.post(
+            agent.url,
+            json={"messages": messages},
+            headers=req_headers,
+        )
         resp.raise_for_status()
         data = resp.json()
 
