@@ -15,10 +15,12 @@ description: "Create edge cases to test the LLM powering your agent"
 
 There are two ways to run LLM evaluations:
 
-- **Calibrate agent** — define your agent's system prompt and tools directly in the config file. Calibrate runs the evaluation using an LLM of your choice.
-- **Agent connection** — point calibrate at your existing agent's HTTP endpoint. Calibrate sends test inputs to it and evaluates the responses. No need to redefine your agent.
+- **Calibrate agent** — define your agent inside the config file and evaluate across models.
+- **Agent connection** — connect your existing agent via HTTP and run tests against it directly.
 
 ### Calibrate agent
+
+Define your agent's system prompt and tools directly in the config file. Calibrate runs the evaluation using an LLM of your choice.
 
 Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-internal-agent.json) for a full template.
 
