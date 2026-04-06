@@ -1,0 +1,125 @@
+{
+  "system_prompt": "You are a helpful customer support assistant for an online store.\n\nYou help customers with:\n1. Checking order status\n2. Processing returns\n3. Answering product questions\n\nWhen a customer asks about their order, call the `check_order` webhook tool with their order ID to fetch the status.\n\nWhen a customer provides feedback or sentiment during the conversation, call the `log_interaction` tool to record the interaction type and sentiment.\n\nBe friendly, helpful, and concise in your responses.",
+  "tools": [
+    {
+      "type": "client",
+      "name": "log_interaction",
+      "description": "Log customer interaction details including the type of inquiry and customer sentiment",
+      "parameters": [
+        {
+          "id": "interaction_type",
+          "type": "string",
+          "description": "Type of customer interaction: order_inquiry, return_request, product_question, complaint, or general",
+          "required": true
+        },
+        {
+          "id": "sentiment",
+          "type": "string",
+          "description": "Customer sentiment: positive, neutral, or negative",
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "webhook",
+      "name": "check_order",
+      "description": "Check the status of a customer order by order ID",
+      "parameters": [],
+      "webhook": {
+        "method": "GET",
+        "url": "https://api.example.com/orders",
+        "timeout": 10,
+        "headers": [{ "name": "Authorization", "value": "Bearer API_KEY" }],
+        "queryParameters": [
+          {
+            "id": "order_id",
+            "type": "string",
+            "description": "The customer's order ID",
+            "required": true
+          }
+        ]
+      }
+    }
+  ],
+  "test_cases": [
+    {
+      "history": [
+        {
+          "role": "assistant",
+          "content": "Hello! How can I help you today?"
+        },
+        {
+          "role": "user",
+          "content": "I want to check my order status. My order ID is ORD-12345."
+        }
+      ],
+      "evaluation": {
+        "type": "tool_call",
+        "tool_calls": [
+          {
+            "tool": "check_order",
+            "arguments": {
+              "order_id": "ORD-12345"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "history": [
+        {
+          "role": "assistant",
+          "content": "Hello! How can I help you today?"
+        },
+        {
+          "role": "user",
+          "content": "I'm really happy with my recent purchase! The product quality is amazing."
+        }
+      ],
+      "evaluation": {
+        "type": "tool_call",
+        "tool_calls": [
+          {
+            "tool": "log_interaction",
+            "arguments": {
+              "interaction_type": "general",
+              "sentiment": "positive"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "history": [
+        {
+          "role": "assistant",
+          "content": "Hello! How can I help you today?"
+        },
+        {
+          "role": "user",
+          "content": "What's the weather like?"
+        }
+      ],
+      "evaluation": {
+        "type": "response",
+        "criteria": "The assistant should politely redirect the conversation back to store-related topics and explain it can only help with order inquiries, returns, and product questions."
+      }
+    },
+    {
+      "history": [
+        {
+          "role": "assistant",
+          "content": "Hello! How can I help you today?"
+        },
+        {
+          "role": "user",
+          "content": "Do you have any laptops in stock?"
+        }
+      ],
+      "evaluation": {
+        "type": "response",
+        "criteria": "The assistant should respond helpfully about product availability or ask for more details about what specific laptop the customer is looking for."
+      }
+    }
+  ]
+}

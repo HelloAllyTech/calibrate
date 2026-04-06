@@ -13,13 +13,20 @@ description: "Create edge cases to test the LLM powering your agent"
 
 ## Configuration
 
-You need to create a config file that defines the following:
+There are two ways to run LLM evaluations:
+
+- **Internal agent** — define your agent's system prompt and tools directly in the config file. Calibrate runs the evaluation using an LLM of your choice.
+- **External agent** — point calibrate at your existing agent's HTTP endpoint. Calibrate sends test inputs to it and evaluates the responses. No need to redefine your agent.
+
+---
+
+## Internal agent
+
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-internal-agent.json) for a full template. The config defines the following:
 
 - Instructions for your agent
 - Tools available to your agent
 - Test cases to evaluate your agent on
-
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config.json) for a template. This section explains the different keys in the config file.
 
 ### `system_prompt`
 
@@ -94,6 +101,8 @@ An array of test cases. These are the scenarios you want to evaluate your agent 
 
 ### Full example
 
+See the [full example on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-internal-agent.json).
+
 ```json
 {
   "system_prompt": "You are a helpful customer support assistant...",
@@ -165,21 +174,132 @@ An array of test cases. These are the scenarios you want to evaluate your agent 
 }
 ```
 
+---
+
+## External agent
+
+If you already have an agent running, you can connect calibrate directly to it instead of redefining your agent's system prompt and tools.
+
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-external-agent.json) for a full template.
+
+### `agent_url`
+
+The HTTP endpoint calibrate will POST to. Your endpoint must accept the following request body:
+
+```json
+{
+  "messages": [
+    { "role": "assistant", "content": "Hello! How can I help you?" },
+    { "role": "user", "content": "Check order ORD-12345" }
+  ]
+}
+```
+
+### `agent_headers`
+
+Optional. HTTP headers to include in every request — typically used for authentication.
+
+```json
+{
+  "agent_headers": {
+    "Authorization": "Bearer YOUR_API_KEY"
+  }
+}
+```
+
+### Response format
+
+Your agent must return a JSON response with at least one of these keys:
+
+| Key          | Type            | Description                                      |
+| ------------ | --------------- | ------------------------------------------------ |
+| `response`   | string or null  | The agent's text reply                           |
+| `tool_calls` | array           | Tool calls made by the agent                     |
+
+Each item in `tool_calls` must have:
+
+```json
+{
+  "tool": "function_name",
+  "arguments": { "key": "value" }
+}
+```
+
+### `test_cases`
+
+Same format as internal agent — the `history` and `evaluation` keys work identically. Your agent owns its tools internally so there is no need to define them in the config.
+
+### Full example
+
+```json
+{
+  "agent_url": "https://your-agent.com/chat",
+  "agent_headers": {
+    "Authorization": "Bearer YOUR_API_KEY"
+  },
+  "test_cases": [
+    {
+      "history": [
+        { "role": "assistant", "content": "Hello! How can I help you today?" },
+        { "role": "user", "content": "Check order ORD-12345" }
+      ],
+      "evaluation": {
+        "type": "tool_call",
+        "tool_calls": [
+          { "tool": "check_order", "arguments": { "order_id": "ORD-12345" } }
+        ]
+      }
+    },
+    {
+      "history": [
+        { "role": "assistant", "content": "Hello! How can I help you today?" },
+        { "role": "user", "content": "What's the weather like?" }
+      ],
+      "evaluation": {
+        "type": "response",
+        "criteria": "The assistant should politely redirect to store-related topics."
+      }
+    }
+  ]
+}
+```
+
+### Verify your connection
+
+Before running evaluations, you can verify that your agent endpoint is reachable and returns the expected format:
+
+```bash
+calibrate llm --verify --agent-url https://your-agent.com/chat --agent-headers '{"Authorization": "Bearer YOUR_API_KEY"}'
+```
+
+This sends a test message and checks that the response matches the required format, printing a clear error if something is wrong.
+
+---
+
 ## Get started
 
 ```bash
 calibrate llm
 ```
 
-The interactive UI guides you through the full evaluation process:
+The interactive UI guides you through the full evaluation process.
 
-1. **Config file** — path to the config file you created in the [previous](#configuration) section
+**Internal agent:**
+
+1. **Config file** — path to your `config-internal-agent.json`
 2. **Provider** — OpenRouter or OpenAI
 3. **Model entry** — enter the models you want to evaluate
 4. **Output directory** — where results will be saved (defaults to `./out`)
 5. **API keys** — enter the API keys for the selected providers
 
 The evaluation runs the selected models in parallel (max 2 at a time), showing the results for each test as they are ready.
+
+**External agent:**
+
+1. **Config file** — path to your `config-external-agent.json` (with `agent_url` set)
+2. **Output directory** — where results will be saved (defaults to `./out`)
+
+The provider and model selection steps are skipped — calibrate connects directly to your agent.
 
 ## Output
 
