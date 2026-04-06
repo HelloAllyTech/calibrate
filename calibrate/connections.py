@@ -80,7 +80,6 @@ class TextAgentConnection:
         self,
         messages: Optional[list] = None,
         model: Optional[str] = None,
-        provider: Optional[str] = None,
     ) -> dict:
         """Check the endpoint is reachable and returns the expected format.
 
@@ -93,8 +92,6 @@ class TextAgentConnection:
                 Defaults to a simple greeting when not provided.
             model: Optional model name to include in the request (for verifying
                 benchmark mode, e.g. ``"gemma-4-26b-a4b-it"``).
-            provider: Optional provider name to include in the request (e.g.
-                ``"google"``).
 
         Returns:
             ``{"ok": True}`` on success, or
@@ -105,8 +102,8 @@ class TextAgentConnection:
             >>> result = asyncio.run(agent.verify(
             ...     messages=[{"role": "user", "content": "What is 2+2?"}]
             ... ))
-            >>> # Benchmark verify — checks agent accepts model params
-            >>> result = asyncio.run(agent.verify(model="gemma-4-26b-a4b-it", provider="google"))
+            >>> # Benchmark verify — checks agent accepts model param
+            >>> result = asyncio.run(agent.verify(model="gemma-4-26b-a4b-it"))
         """
         input_messages = messages if messages is not None else _DEFAULT_VERIFY_MESSAGES
 
@@ -119,8 +116,6 @@ class TextAgentConnection:
             body: dict = {"messages": input_messages}
             if model is not None:
                 body["model"] = model
-            if provider is not None:
-                body["provider"] = provider
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(

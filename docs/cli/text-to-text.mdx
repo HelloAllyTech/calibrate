@@ -76,6 +76,17 @@ Calibrate will make a POST request to your `agent_url` with the following body:
 }
 ```
 
+When benchmarking across models, a `model` field is added so your agent can route to the right model:
+
+```json
+{
+  "messages": [...],
+  "model": "gemma-4-26b-a4b-it"
+}
+```
+
+To enable benchmarking multiple models, your API must support the `model` field and you must implement the model routing in your agent. The easiest way is to use an existing framework like `OpenRouter` and select among a wide range of models.
+
 #### Response format
 
 Your agent must return a JSON response with at least one of these keys:
@@ -286,46 +297,90 @@ For agent connection, your agent owns its tools internally — there is no need 
 
 ## Get started
 
+### Interactive mode
+
+Run `calibrate llm` with no arguments to launch the interactive UI:
+
 ```bash
 calibrate llm
 ```
 
-### Calibrate agent
-
-The interactive UI guides you through:
+**Calibrate agent** — the UI detects that your config defines a system prompt and tools and guides you through:
 
 1. **Config file** — path to your config file
 2. **Provider** — OpenRouter or OpenAI
-3. **Model entry** — enter the models you want to evaluate
+3. **Model entry** — enter model names one at a time (single or multiple)
+4. **Confirm models** — review the list and add more or proceed
+5. **Output directory** — where results will be saved (defaults to `./out`)
+6. **API keys** — enter the API keys for the selected provider
+
+The evaluation runs the selected models in parallel (max 2 at a time), showing results for each test as they complete.
+
+**Agent connection** — the UI detects `agent_url` in your config and switches to agent mode:
+
+_Single test:_
+
+1. **Config file** — path to your config file (with `agent_url` and optionally `agent_headers`)
+2. **Mode** — select "Single test"
+3. **Verify** — calibrate verifies the connection; shows success or failure with the option to go back
 4. **Output directory** — where results will be saved (defaults to `./out`)
-5. **API keys** — enter the API keys for the selected providers
+5. **API keys** — only `OPENAI_API_KEY` is required (used by the LLM judge)
 
-The evaluation runs the selected models in parallel (max 2 at a time), showing the results for each test as they are ready.
+_Benchmark across models:_
 
-### Agent connection
+1. **Config file** — path to your config file (with `agent_url` and optionally `agent_headers`)
+2. **Mode** — select "Benchmark across models"
+3. **Model entry** — enter a model name; calibrate verifies the connection with that model before asking if you want to add another
+4. **Confirm models** — review the list and add more or proceed
+5. **Output directory** — where results will be saved (defaults to `./out`)
+6. **API keys** — only `OPENAI_API_KEY` is required (used by the LLM judge)
 
-**Single run** — set `agent_url` in your config and run:
+### Non-interactive mode
+
+Pass a config file directly to skip the UI.
+
+**Calibrate agent:**
+
+Single model:
+
+```bash
+calibrate llm -c config.json -m gpt-4.1 -p openrouter -o ./out
+```
+
+Multiple models (benchmark — runs in parallel, generates a leaderboard):
+
+```bash
+calibrate llm -c config.json -m gpt-4.1 claude-sonnet-4-5 -p openrouter -o ./out
+```
+
+**Agent connection:**
+
+Your config must include `agent_url` and optionally `agent_headers`:
+
+```json
+{
+  "agent_url": "https://your-agent.com/chat",
+  "agent_headers": {
+    "Authorization": "Bearer YOUR_API_KEY"
+  }
+}
+```
+
+Single run (use the default model of the agent):
 
 ```bash
 calibrate llm -c config.json -o ./out
 ```
 
-The provider and model selection steps are skipped — calibrate connects directly to your agent. Results are saved directly to the output directory.
+Calibrate verifies the connection before running. Results are saved directly to the output directory.
 
-**Benchmark across models** — pass one or more model names with `-m`. Calibrate runs the same test cases once per model, including the model name and provider in each request so your agent can route to the right model.
-
-```bash
-calibrate llm -c config.json -m google/gemma-4-26b-a4b-it openai/gpt-4o -o ./out
-```
-
-Models follow the OpenRouter format: `provider/model-name`. Each model gets its own results folder and appears as a separate entry in the leaderboard.
-
-Verify your connection works before running — optionally with a specific model:
+Benchmark across models — calibrate verifies the connection for each model, then runs the test suite once per model. The model name is included in each request so your agent can route to the right model:
 
 ```bash
-calibrate llm --verify --agent-url https://your-agent.com/chat
-calibrate llm --verify --agent-url https://your-agent.com/chat -m google/gemma-4-26b-a4b-it
+calibrate llm -c config.json -m gemma-4-26b-a4b-it gpt-4o -o ./out
 ```
+
+Each model gets its own results folder, and a summary with pass rates for all models is printed at the end.
 
 ## Output
 

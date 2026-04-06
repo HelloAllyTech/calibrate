@@ -121,17 +121,8 @@ class _Tests:
         results = []
         results_file_path = os.path.join(final_output_dir, "results.json")
 
-        # Parse model/provider hint for agent benchmarking.
-        # OpenRouter format: "google/gemma-4-26b" → provider="google", model="gemma-4-26b"
-        # OpenAI format: "gpt-4o" → provider="openai", model="gpt-4o"
-        agent_model_hint: Optional[str] = None
-        agent_provider_hint: Optional[str] = None
-        if agent is not None and model:
-            if "/" in model:
-                agent_provider_hint, agent_model_hint = model.split("/", 1)
-            else:
-                agent_provider_hint = provider or "openai"
-                agent_model_hint = model
+        # Pass model name to agent for benchmark routing; None for single runs.
+        agent_model_hint: Optional[str] = model if (agent is not None and model) else None
 
         for test_case_index, test_case in enumerate(test_cases):
             if agent is not None:
@@ -140,7 +131,6 @@ class _Tests:
                     evaluation=test_case["evaluation"],
                     agent=agent,
                     model=agent_model_hint,
-                    provider=agent_provider_hint,
                 )
             else:
                 agent_language = test_case.get("settings", {}).get("language", "english")
@@ -281,7 +271,7 @@ class _Tests:
             return {m: r for m, r in zip(models, results)}
 
         # External agent: single run (no model selection) — pass empty model so
-        # folder name falls back to "external_agent" instead of the default "gpt-4.1"
+        # no model — save directly to output_dir (no subfolder)
         if agent is not None:
             return await _Tests._run_single_model(
                 system_prompt=system_prompt,

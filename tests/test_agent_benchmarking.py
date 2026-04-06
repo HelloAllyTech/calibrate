@@ -2,10 +2,9 @@
 Unit tests for agent connection benchmarking.
 
 Covers:
-- model/provider params included in request body
-- model/provider threaded through run_test_external
-- verify() sends model/provider for benchmark verify
-- OpenRouter model name parsing
+- model param included in request body (no provider)
+- model threaded through run_test_external
+- verify() sends model for benchmark verify
 - output folder naming per model
 
 Run with:
@@ -43,12 +42,12 @@ def _patch_httpx(response_body: dict, status: int = 200):
 
 
 # ---------------------------------------------------------------------------
-# Tests for call_text_agent — model/provider in request body
+# Tests for call_text_agent — model in request body (no provider)
 # ---------------------------------------------------------------------------
 
 class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
 
-    async def test_model_and_provider_included_in_body(self):
+    async def test_model_included_in_body(self):
         from calibrate.connections import TextAgentConnection
         from calibrate.llm.run_tests import call_text_agent
 
@@ -59,15 +58,14 @@ class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
                 [{"role": "user", "content": "Hi"}],
                 agent,
                 model="gemma-4-26b-a4b-it",
-                provider="google",
             )
 
         body = mock_client.post.call_args.kwargs["json"]
         self.assertEqual(body["model"], "gemma-4-26b-a4b-it")
-        self.assertEqual(body["provider"], "google")
+        self.assertNotIn("provider", body)
         self.assertIn("messages", body)
 
-    async def test_model_and_provider_absent_when_not_passed(self):
+    async def test_model_absent_when_not_passed(self):
         from calibrate.connections import TextAgentConnection
         from calibrate.llm.run_tests import call_text_agent
 
@@ -84,7 +82,8 @@ class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("provider", body)
         self.assertIn("messages", body)
 
-    async def test_only_model_included_when_provider_omitted(self):
+    async def test_model_included_openrouter_format(self):
+        """OpenRouter format model string passed as-is (no splitting)."""
         from calibrate.connections import TextAgentConnection
         from calibrate.llm.run_tests import call_text_agent
 
@@ -94,21 +93,21 @@ class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
             await call_text_agent(
                 [{"role": "user", "content": "Hi"}],
                 agent,
-                model="gpt-4o",
+                model="google/gemma-4-26b-a4b-it",
             )
 
         body = mock_client.post.call_args.kwargs["json"]
-        self.assertEqual(body["model"], "gpt-4o")
+        self.assertEqual(body["model"], "google/gemma-4-26b-a4b-it")
         self.assertNotIn("provider", body)
 
 
 # ---------------------------------------------------------------------------
-# Tests for run_test_external — model/provider threaded through
+# Tests for run_test_external — model threaded through
 # ---------------------------------------------------------------------------
 
 class TestRunTestExternalModelParams(unittest.IsolatedAsyncioTestCase):
 
-    async def test_model_and_provider_passed_to_call_text_agent(self):
+    async def test_model_passed_to_call_text_agent(self):
         from calibrate.connections import TextAgentConnection
         from calibrate.llm.run_tests import run_test_external
 
@@ -124,14 +123,13 @@ class TestRunTestExternalModelParams(unittest.IsolatedAsyncioTestCase):
                 evaluation=evaluation,
                 agent=agent,
                 model="gemma-4-26b-a4b-it",
-                provider="google",
             )
 
         body = mock_client.post.call_args.kwargs["json"]
         self.assertEqual(body["model"], "gemma-4-26b-a4b-it")
-        self.assertEqual(body["provider"], "google")
+        self.assertNotIn("provider", body)
 
-    async def test_no_model_params_when_not_passed(self):
+    async def test_no_model_param_when_not_passed(self):
         from calibrate.connections import TextAgentConnection
         from calibrate.llm.run_tests import run_test_external
 
@@ -157,20 +155,20 @@ class TestRunTestExternalModelParams(unittest.IsolatedAsyncioTestCase):
 
 class TestVerifyWithModelParams(unittest.IsolatedAsyncioTestCase):
 
-    async def test_verify_includes_model_and_provider(self):
+    async def test_verify_includes_model(self):
         from calibrate.connections import TextAgentConnection
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
         ctx, mock_client = _patch_httpx({"response": "hi"})
         with ctx:
-            result = await agent.verify(model="gemma-4-26b-a4b-it", provider="google")
+            result = await agent.verify(model="gemma-4-26b-a4b-it")
 
         self.assertTrue(result["ok"])
         body = mock_client.post.call_args.kwargs["json"]
         self.assertEqual(body["model"], "gemma-4-26b-a4b-it")
-        self.assertEqual(body["provider"], "google")
+        self.assertNotIn("provider", body)
 
-    async def test_verify_without_model_params_has_only_messages(self):
+    async def test_verify_without_model_has_only_messages(self):
         from calibrate.connections import TextAgentConnection
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
@@ -184,46 +182,30 @@ class TestVerifyWithModelParams(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("provider", body)
         self.assertIn("messages", body)
 
-    async def test_verify_passes_even_when_agent_ignores_model_params(self):
-        """Agent that returns valid format regardless of model params should pass."""
+    async def test_verify_passes_even_when_agent_ignores_model(self):
+        """Agent that returns valid format regardless of model param should pass."""
         from calibrate.connections import TextAgentConnection
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
         ctx, mock_client = _patch_httpx({"response": "I am using gemma", "tool_calls": []})
         with ctx:
-            result = await agent.verify(model="gemma-4-26b-a4b-it", provider="google")
+            result = await agent.verify(model="gemma-4-26b-a4b-it")
 
         self.assertTrue(result["ok"])
 
+    async def test_verify_openrouter_format_model_passed_as_is(self):
+        """OpenRouter format model string is passed as-is, no provider split."""
+        from calibrate.connections import TextAgentConnection
 
-# ---------------------------------------------------------------------------
-# Tests for _parse_openrouter_model (CLI helper)
-# ---------------------------------------------------------------------------
+        agent = TextAgentConnection(url="http://fake-agent/chat")
+        ctx, mock_client = _patch_httpx({"response": "hi"})
+        with ctx:
+            result = await agent.verify(model="google/gemma-4-26b-a4b-it")
 
-class TestParseOpenrouterModel(unittest.TestCase):
-
-    def _parse(self, model_str, provider_arg="openrouter"):
-        from calibrate.cli import _parse_openrouter_model
-        return _parse_openrouter_model(model_str, provider_arg)
-
-    def test_openrouter_format_splits_correctly(self):
-        self.assertEqual(self._parse("google/gemma-4-26b-a4b-it"), ("google", "gemma-4-26b-a4b-it"))
-
-    def test_openai_slash_format(self):
-        self.assertEqual(self._parse("openai/gpt-4o"), ("openai", "gpt-4o"))
-
-    def test_openai_model_uses_provider_arg(self):
-        self.assertEqual(self._parse("gpt-4o", "openai"), ("openai", "gpt-4o"))
-
-    def test_openai_model_defaults_to_openai_when_no_provider(self):
-        self.assertEqual(self._parse("gpt-4o", ""), ("openai", "gpt-4o"))
-
-    def test_nested_slash_only_splits_on_first(self):
-        # anthropic/claude-3-5-sonnet-20241022 → provider=anthropic, model=claude-3-5-sonnet-20241022
-        self.assertEqual(
-            self._parse("anthropic/claude-3-5-sonnet-20241022"),
-            ("anthropic", "claude-3-5-sonnet-20241022"),
-        )
+        self.assertTrue(result["ok"])
+        body = mock_client.post.call_args.kwargs["json"]
+        self.assertEqual(body["model"], "google/gemma-4-26b-a4b-it")
+        self.assertNotIn("provider", body)
 
 
 # ---------------------------------------------------------------------------
@@ -267,11 +249,13 @@ class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
             ]
             return created[0] if created else None
 
-    async def test_openrouter_model_folder_uses_double_underscore(self):
+    async def test_model_name_folder_uses_double_underscore_for_slash(self):
+        """Model names with / use __ as separator in folder name."""
         folder = await self._get_folder("google/gemma-4-26b-a4b-it")
         self.assertEqual(folder, "google__gemma-4-26b-a4b-it")
 
-    async def test_openai_model_folder_is_model_name(self):
+    async def test_plain_model_name_used_directly(self):
+        """Plain model name (no slash) used as folder name directly."""
         folder = await self._get_folder("gpt-4o")
         self.assertEqual(folder, "gpt-4o")
 

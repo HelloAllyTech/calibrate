@@ -86,23 +86,10 @@ def _launch_ink_ui(mode: str):
     sys.exit(result.returncode)
 
 
-def _parse_openrouter_model(model_str: str, provider_arg: str) -> tuple[str, str]:
-    """Split an OpenRouter model string into (provider, model).
-
-    ``google/gemma-4-26b-a4b-it`` → ``("google", "gemma-4-26b-a4b-it")``
-    ``gpt-4o`` with provider ``openai`` → ``("openai", "gpt-4o")``
-    """
-    if "/" in model_str:
-        prov, mod = model_str.split("/", 1)
-        return prov, mod
-    return provider_arg or "openai", model_str
-
-
 def _run_agent_verify(
     agent_url: str,
     agent_headers_raw: str | None,
     models: list[str] | None = None,
-    provider: str = "openrouter",
 ) -> None:
     """Verify an external agent connection and print the result."""
     from calibrate.connections import TextAgentConnection
@@ -117,20 +104,17 @@ def _run_agent_verify(
 
     agent = TextAgentConnection(url=agent_url, headers=headers)
 
-    # If models provided, verify with first model's parsed params (benchmark mode)
-    model_hint: str | None = None
-    provider_hint: str | None = None
-    if models:
-        provider_hint, model_hint = _parse_openrouter_model(models[0], provider)
+    # If models provided, send the first model name in the verify request
+    model_hint: str | None = models[0] if models else None
 
-    body_preview = '{"messages": [...], "model": "' + model_hint + '", "provider": "' + provider_hint + '"}' \
+    body_preview = '{"messages": [...], "model": "' + model_hint + '"}' \
         if model_hint else '{"messages": [{"role": "user", "content": "Hi"}]}'
 
     print(f"\nVerifying agent connection: {agent_url}")
     print(f"Sending: {body_preview}")
     print("─" * 60)
 
-    result = asyncio.run(agent.verify(model=model_hint, provider=provider_hint))
+    result = asyncio.run(agent.verify(model=model_hint))
 
     if result["ok"]:
         print("✓ Connection verified — response format is correct")
@@ -281,6 +265,11 @@ Examples:
         type=str,
         default=None,
         help='HTTP headers for the agent as a JSON string, e.g. \'{"Authorization": "Bearer sk-..."}\'',
+    )
+    llm_parser.add_argument(
+        "--skip-verify",
+        action="store_true",
+        help="Skip agent connection verification (used internally when already verified)",
     )
     # ── Simulations ─────────────────────────────────────────────
     # `calibrate simulations` with no args → interactive UI
@@ -437,7 +426,6 @@ Examples:
                 args.agent_url,
                 args.agent_headers,
                 models=args.model,
-                provider=args.provider,
             )
         elif args.config is None:
             # No config → interactive mode
@@ -458,13 +446,52 @@ Examples:
                     headers=_config.get("agent_headers"),
                 )
                 _models = args.model if args.model else []
-                asyncio.run(_tests.run(
-                    agent=_agent,
-                    test_cases=_config["test_cases"],
-                    output_dir=args.output_dir,
-                    models=_models if _models else None,
-                    provider=args.provider,
-                ))
+
+                # Verify once per model (skip if already verified upstream e.g. interactive UI)
+                if not getattr(args, "skip_verify", False):
+                    _models_to_verify = _models if _models else [None]
+                    for _m in _models_to_verify:
+                        _label = f"model: {_m}" if _m else "connection"
+                        print(f"\nVerifying agent {_label}: {_config['agent_url']}")
+                        _verify_result = asyncio.run(_agent.verify(model=_m))
+                        if not _verify_result["ok"]:
+                            print(f"✗ Verification failed: {_verify_result['error']}")
+                            if "details" in _verify_result:
+                                print(f"  Details: {_verify_result['details']}")
+                            sys.exit(1)
+                        print(f"✓ Verified\n")
+
+                from calibrate.llm.tests_leaderboard import generate_leaderboard
+                from calibrate.llm._output import print_benchmark_summary
+
+                # Run — one model at a time so output is clearly separated
+                if _models:
+                    _model_results = {}
+                    for _m in _models:
+                        print(f"\n\033[92m{'='*60}\033[0m")
+                        print(f"\033[92m  Model: {_m}\033[0m")
+                        print(f"\033[92m{'='*60}\033[0m\n")
+                        _result = asyncio.run(_tests.run(
+                            agent=_agent,
+                            test_cases=_config["test_cases"],
+                            output_dir=args.output_dir,
+                            models=[_m],
+                        ))
+                        _model_results[_m] = _result.get(_m, _result)
+
+                    _lb_dir = os.path.join(args.output_dir, "leaderboard")
+                    generate_leaderboard(output_dir=args.output_dir, save_dir=_lb_dir)
+                    print_benchmark_summary(
+                        models=_models,
+                        model_results=_model_results,
+                        leaderboard_dir=_lb_dir,
+                    )
+                else:
+                    asyncio.run(_tests.run(
+                        agent=_agent,
+                        test_cases=_config["test_cases"],
+                        output_dir=args.output_dir,
+                    ))
             else:
                 from calibrate.llm.benchmark import main as llm_benchmark_main
 
@@ -487,7 +514,6 @@ Examples:
                 args.agent_url,
                 args.agent_headers,
                 models=getattr(args, "model", None),
-                provider=getattr(args, "provider", "openrouter"),
             )
         # Hidden leaderboard subcommand (used by Ink UI)
         elif getattr(args, "sim_subcmd", None) == "leaderboard":

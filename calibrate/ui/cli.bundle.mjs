@@ -47182,7 +47182,8 @@ var import_react23 = __toESM(require_react(), 1);
 import { spawn } from "node:child_process";
 import fs4 from "node:fs";
 import path3 from "node:path";
-var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
+
+// source/llm-types.ts
 var MAX_PARALLEL_MODELS = 2;
 var OPENAI_MODEL_EXAMPLES = [
   "gpt-4.1",
@@ -47198,6 +47199,9 @@ var OPENROUTER_MODEL_EXAMPLES = [
   "anthropic/claude-sonnet-4",
   "google/gemini-2.0-flash-001"
 ];
+
+// source/llm-app.tsx
+var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
 function LlmTestsApp({ onBack }) {
   const { exit } = use_app_default();
   const [step, setStep] = (0, import_react23.useState)("init");
@@ -47208,7 +47212,11 @@ function LlmTestsApp({ onBack }) {
     outputDir: "./out",
     overwrite: false,
     envVars: {},
-    calibrate: { cmd: "calibrate", args: [] }
+    calibrate: { cmd: "calibrate", args: [] },
+    agentUrl: "",
+    agentHeaders: {},
+    agentBenchmark: false,
+    agentModels: []
   });
   const [existingDirs, setExistingDirs] = (0, import_react23.useState)([]);
   const [configInput, setConfigInput] = (0, import_react23.useState)("");
@@ -47218,6 +47226,8 @@ function LlmTestsApp({ onBack }) {
   const [missingKeys, setMissingKeys] = (0, import_react23.useState)([]);
   const [currentKeyIdx, setCurrentKeyIdx] = (0, import_react23.useState)(0);
   const [keyInput, setKeyInput] = (0, import_react23.useState)("");
+  const [verifyStatus, setVerifyStatus] = (0, import_react23.useState)("running");
+  const [verifyError, setVerifyError] = (0, import_react23.useState)("");
   const [modelStates, setModelStates] = (0, import_react23.useState)(
     {}
   );
@@ -47250,8 +47260,28 @@ function LlmTestsApp({ onBack }) {
       case "model-confirm":
         setStep("enter-model");
         break;
+      case "agent-mode":
+        setStep("config-path");
+        break;
+      case "agent-model-entry":
+        setStep(config.agentModels.length > 0 ? "agent-model-confirm" : "agent-mode");
+        setDuplicateError("");
+        break;
+      case "agent-model-confirm":
+        setStep("agent-verify");
+        break;
+      case "agent-verify":
+        if (config.agentBenchmark) {
+          setConfig((c) => ({ ...c, agentModels: c.agentModels.slice(0, -1) }));
+          setStep("agent-model-entry");
+        } else {
+          setStep("agent-mode");
+        }
+        break;
       case "output-dir":
-        setStep("model-confirm");
+        setStep(
+          config.agentUrl ? config.agentBenchmark ? "agent-model-confirm" : "agent-verify" : "model-confirm"
+        );
         break;
       case "output-dir-confirm":
         setStep("output-dir");
@@ -47333,7 +47363,7 @@ function LlmTestsApp({ onBack }) {
     if (!getCredential("OPENAI_API_KEY")) {
       needed.push("OPENAI_API_KEY");
     }
-    if (provider === "openrouter") {
+    if (!config.agentUrl && provider === "openrouter") {
       if (!getCredential("OPENROUTER_API_KEY")) {
         needed.push("OPENROUTER_API_KEY");
       }
@@ -47341,14 +47371,24 @@ function LlmTestsApp({ onBack }) {
     return needed;
   }
   function getModelDir(model) {
-    let modelDir = config.provider === "openai" ? `${config.provider}/${model}` : model;
+    const modelDir = config.provider === "openai" ? `${config.provider}/${model}` : model;
     return modelDir.replace(/\//g, "__");
+  }
+  function getResultsDir(model) {
+    if (config.agentUrl && !config.agentBenchmark) {
+      return config.outputDir;
+    }
+    if (config.agentUrl && config.agentBenchmark) {
+      return path3.join(config.outputDir, model.replace(/\//g, "__"));
+    }
+    return path3.join(config.outputDir, getModelDir(model));
   }
   (0, import_react23.useEffect)(() => {
     if (step !== "running") return;
     const initialStates = {};
-    for (const model of config.models) {
-      initialStates[model] = { status: "waiting", logs: [] };
+    const keys = config.agentUrl ? config.agentBenchmark ? config.agentModels : ["agent"] : config.models;
+    for (const key of keys) {
+      initialStates[key] = { status: "waiting", logs: [] };
     }
     setModelStates(initialStates);
     setPhase("eval");
@@ -47365,7 +47405,16 @@ function LlmTestsApp({ onBack }) {
     }
     Object.assign(env3, config.envVars);
     env3.PYTHONUNBUFFERED = "1";
-    const cmdArgs = [
+    const cmdArgs = config.agentUrl ? [
+      ...bin.args,
+      "llm",
+      "-c",
+      config.configPath,
+      "-o",
+      config.outputDir,
+      "--skip-verify",
+      ...config.agentBenchmark ? ["-m", model] : []
+    ] : [
       ...bin.args,
       "llm",
       "-c",
@@ -47411,12 +47460,7 @@ function LlmTestsApp({ onBack }) {
       let metricsData = void 0;
       if (code === 0) {
         try {
-          const modelDir = getModelDir(model);
-          const resultsPath = path3.join(
-            config.outputDir,
-            modelDir,
-            "results.json"
-          );
+          const resultsPath = path3.join(getResultsDir(model), "results.json");
           if (fs4.existsSync(resultsPath)) {
             const results = JSON.parse(fs4.readFileSync(resultsPath, "utf-8"));
             const passed = results.filter(
@@ -47446,7 +47490,8 @@ function LlmTestsApp({ onBack }) {
     const completedCount = Object.values(modelStates).filter(
       (s) => s.status === "done" || s.status === "error"
     ).length;
-    if (completedCount >= config.models.length) {
+    const runKeys = config.agentUrl ? config.agentBenchmark ? config.agentModels : ["agent"] : config.models;
+    if (completedCount >= runKeys.length) {
       setPhase("leaderboard");
       const env3 = { ...process.env };
       env3.PYTHONUNBUFFERED = "1";
@@ -47475,22 +47520,60 @@ function LlmTestsApp({ onBack }) {
       });
       return;
     }
-    if (runningCount < MAX_PARALLEL_MODELS && nextModelIdx < config.models.length) {
-      const model = config.models[nextModelIdx];
+    if (runningCount < MAX_PARALLEL_MODELS && nextModelIdx < runKeys.length) {
+      const model = runKeys[nextModelIdx];
       setNextModelIdx((idx) => idx + 1);
       startModel(model);
     }
   }, [step, phase, runningCount, nextModelIdx, modelStates]);
+  (0, import_react23.useEffect)(() => {
+    if (step !== "agent-verify") return;
+    setVerifyStatus("running");
+    setVerifyError("");
+    const bin = config.calibrate;
+    const verifyArgs = [
+      ...bin.args,
+      "llm",
+      "--verify",
+      "--agent-url",
+      config.agentUrl,
+      ...Object.keys(config.agentHeaders).length > 0 ? ["--agent-headers", JSON.stringify(config.agentHeaders)] : [],
+      ...config.agentBenchmark && config.agentModels.length > 0 ? ["-m", config.agentModels[config.agentModels.length - 1]] : []
+    ];
+    const env3 = { ...process.env };
+    env3.PYTHONUNBUFFERED = "1";
+    const proc = spawn(bin.cmd, verifyArgs, { env: env3, stdio: ["pipe", "pipe", "pipe"] });
+    let output = "";
+    proc.stdout?.on("data", (d) => {
+      output += d.toString();
+    });
+    proc.stderr?.on("data", (d) => {
+      output += d.toString();
+    });
+    proc.on("close", (code) => {
+      if (code === 0) {
+        setVerifyStatus("success");
+        setTimeout(() => {
+          setStep(config.agentBenchmark ? "agent-model-confirm" : "output-dir");
+        }, 1e3);
+      } else {
+        const lines = output.split("\n").filter((l) => l.trim());
+        const errorLine = lines.find((l) => l.includes("\u2717") || l.includes("Verification failed") || l.includes("error")) || lines[lines.length - 1] || "Connection failed";
+        setVerifyStatus("failed");
+        setVerifyError(errorLine);
+      }
+    });
+    proc.on("error", () => {
+      setVerifyStatus("failed");
+      setVerifyError("Failed to run verification");
+    });
+  }, [step]);
   const loadMetrics = () => {
     const results = [];
-    for (const model of config.models) {
+    const metricKeys = config.agentUrl ? config.agentBenchmark ? config.agentModels : ["agent"] : config.models;
+    for (const model of metricKeys) {
       try {
-        const modelDir = getModelDir(model);
-        const resultsPath = path3.join(
-          config.outputDir,
-          modelDir,
-          "results.json"
-        );
+        const resultsPath = path3.join(getResultsDir(model), "results.json");
         if (fs4.existsSync(resultsPath)) {
           const data = JSON.parse(fs4.readFileSync(resultsPath, "utf-8"));
           const passed = data.filter(
@@ -47544,8 +47627,7 @@ function LlmTestsApp({ onBack }) {
   (0, import_react23.useEffect)(() => {
     if (!selectedModel) return;
     try {
-      const modelDir = getModelDir(selectedModel);
-      const resultsPath = path3.join(config.outputDir, modelDir, "results.json");
+      const resultsPath = path3.join(getResultsDir(selectedModel), "results.json");
       if (fs4.existsSync(resultsPath)) {
         const data = JSON.parse(fs4.readFileSync(resultsPath, "utf-8"));
         const results = data.map(
@@ -47615,8 +47697,16 @@ function LlmTestsApp({ onBack }) {
                     setConfigInput("");
                     return;
                   }
-                  setConfig((c) => ({ ...c, configPath: resolved }));
-                  setStep("provider");
+                  let agentUrl = "";
+                  let agentHeaders = {};
+                  try {
+                    const parsed = JSON.parse(fs4.readFileSync(resolved, "utf-8"));
+                    agentUrl = parsed.agent_url || "";
+                    agentHeaders = parsed.agent_headers || {};
+                  } catch {
+                  }
+                  setConfig((c) => ({ ...c, configPath: resolved, agentUrl, agentHeaders }));
+                  setStep(agentUrl ? "agent-mode" : "provider");
                 }
               },
               placeholder: "./config.json"
@@ -47751,6 +47841,103 @@ function LlmTestsApp({ onBack }) {
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: "Press Esc to go back" }) })
       ] });
     }
+    case "agent-mode":
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
+        header,
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: "How do you want to run tests against your agent?" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          SelectInput,
+          {
+            items: [
+              { label: "Single test \u2014 run all test cases once", value: "single" },
+              { label: "Benchmark \u2014 run across multiple models", value: "benchmark" }
+            ],
+            onSelect: (v) => {
+              const isBenchmark = v === "benchmark";
+              setConfig((c) => ({ ...c, agentBenchmark: isBenchmark, agentModels: [] }));
+              setStep(isBenchmark ? "agent-model-entry" : "agent-verify");
+            }
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: "Press Esc to go back" }) })
+      ] });
+    case "agent-model-entry": {
+      const agentModelInput = modelInput;
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
+        header,
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: "Enter the model name to benchmark. Your agent will receive the model name in each request." }),
+        config.agentModels.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { marginTop: 1, flexDirection: "column", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { bold: true, children: "Selected models:" }),
+          config.agentModels.map((m, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Text, { color: "green", children: [
+            "  ",
+            "\u2022 ",
+            m
+          ] }, i))
+        ] }),
+        duplicateError && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: "red", children: duplicateError }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { marginTop: 1, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { children: config.agentModels.length === 0 ? "Model: " : "Add another model: " }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            TextInput,
+            {
+              value: agentModelInput,
+              onChange: (v) => {
+                setModelInput(v);
+                setDuplicateError("");
+              },
+              onSubmit: (v) => {
+                const input = v.trim();
+                if (input) {
+                  if (config.agentModels.includes(input)) {
+                    setDuplicateError(`Model "${input}" is already selected.`);
+                    return;
+                  }
+                  setConfig((c) => ({ ...c, agentModels: [...c.agentModels, input] }));
+                  setModelInput("");
+                  setDuplicateError("");
+                  setStep("agent-verify");
+                } else if (config.agentModels.length > 0) {
+                  setStep("agent-model-confirm");
+                }
+              },
+              placeholder: "gemma-4-26b-a4b-it"
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: "Enter to submit, Esc to go back" }) })
+      ] });
+    }
+    case "agent-model-confirm": {
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
+        header,
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { bold: true, children: "Selected models:" }),
+          config.agentModels.map((m, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Text, { color: "green", children: [
+            "  ",
+            "\u2022 ",
+            m
+          ] }, i))
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { children: "Add another model?" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          SelectInput,
+          {
+            items: [
+              { label: "Yes, add another model", value: "add" },
+              { label: "No, continue with these models", value: "continue" }
+            ],
+            onSelect: (v) => {
+              if (v === "add") {
+                setStep("agent-model-entry");
+              } else {
+                setStep("output-dir");
+              }
+            }
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: "Press Esc to go back" }) })
+      ] });
+    }
     case "output-dir":
       return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
         header,
@@ -47868,30 +48055,68 @@ function LlmTestsApp({ onBack }) {
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: "Enter to submit, Esc to go back" }) })
       ] });
     }
+    case "agent-verify": {
+      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
+        header,
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Text, { dimColor: true, children: [
+          "Verifying agent connection: ",
+          config.agentUrl
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { marginTop: 1, children: [
+          verifyStatus === "running" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Spinner, { label: "Verifying connection..." }),
+          verifyStatus === "success" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: "green", children: "\u2713 Connection verified" }),
+          verifyStatus === "failed" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: "red", children: "\u2717 Verification failed" }),
+            verifyError && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: stripAnsi2(verifyError) }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              SelectInput,
+              {
+                items: [{ label: "Go back", value: "back" }],
+                onSelect: () => {
+                  if (config.agentBenchmark) {
+                    setConfig((c) => ({ ...c, agentModels: c.agentModels.slice(0, -1) }));
+                    setStep("agent-model-entry");
+                  } else {
+                    setStep("agent-mode");
+                  }
+                }
+              }
+            ) })
+          ] })
+        ] })
+      ] });
+    }
     case "running": {
       const completedCount = Object.values(modelStates).filter(
         (s) => s.status === "done" || s.status === "error"
       ).length;
-      const runningModels = config.models.filter(
+      const runKeys = config.agentUrl ? config.agentBenchmark ? config.agentModels : ["agent"] : config.models;
+      const runningModels = runKeys.filter(
         (m) => modelStates[m]?.status === "running"
       );
+      const isSingleAgentRun = config.agentUrl && !config.agentBenchmark;
+      const singleState = isSingleAgentRun ? modelStates["agent"] : void 0;
       return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
         header,
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Text, { dimColor: true, children: [
           "Config: ",
           config.configPath
         ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Text, { dimColor: true, children: [
-          completedCount,
-          "/",
-          config.models.length,
-          " models",
-          runningCount > 1 && ` (${runningCount} running in parallel)`,
-          " | ",
-          "Provider: ",
-          config.provider
-        ] }) }),
-        config.models.map((model) => {
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: config.agentUrl ? `Agent: ${config.agentUrl}` : `${completedCount}/${runKeys.length} models${runningCount > 1 ? ` (${runningCount} running in parallel)` : ""} | Provider: ${config.provider}` }) }),
+        isSingleAgentRun && singleState && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { width: 4, children: singleState.status === "done" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: "green", children: " + " }) : singleState.status === "error" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: "red", children: " x " }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { children: " " }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Spinner, {}),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { children: " " })
+          ] }) }),
+          singleState.status === "done" && singleState.metrics ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Text, { dimColor: true, children: [
+            singleState.metrics.passed,
+            "/",
+            singleState.metrics.total,
+            " passed"
+          ] }) : singleState.status === "running" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: "cyan", children: "Running tests..." }) : singleState.status === "error" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: "red", children: "Failed" }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: "Waiting" })
+        ] }),
+        !isSingleAgentRun && runKeys.map((model) => {
           const state = modelStates[model];
           if (!state) return null;
           return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { children: [
@@ -47955,15 +48180,12 @@ function LlmTestsApp({ onBack }) {
       }
       const leaderboardDir = path3.join(config.outputDir, "leaderboard");
       const resolvedOutputDir = path3.resolve(config.outputDir);
+      const leaderboardKeys = config.agentUrl ? config.agentBenchmark ? config.agentModels : ["agent"] : config.models;
       if (view === "model-detail" && selectedModel) {
         const visibleRows = modelResults.slice(
           scrollOffset,
           scrollOffset + MAX_VISIBLE_ROWS
         );
-        const formatHistory = (history) => {
-          if (!history || history.length === 0) return "-";
-          return history.map((h) => `${h.role}: ${h.content}`).join(" | ");
-        };
         const truncate = (s, max) => s.length > max ? s.slice(0, max - 1) + "\u2026" : s;
         return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { marginBottom: 1, children: [
@@ -48112,8 +48334,8 @@ function LlmTestsApp({ onBack }) {
             SelectInput,
             {
               items: [
-                ...config.models.map((m) => ({
-                  label: `${m} \u2014 View test-by-test results`,
+                ...leaderboardKeys.map((m) => ({
+                  label: config.agentUrl && !config.agentBenchmark ? "View test-by-test results" : `${m} \u2014 View test-by-test results`,
                   value: m
                 })),
                 { label: "Exit", value: "__exit__" }

@@ -28,6 +28,7 @@ from os.path import exists, join
 
 from calibrate.llm.run_tests import run_model_tests
 from calibrate.llm.tests_leaderboard import generate_leaderboard
+from calibrate.llm._output import print_benchmark_summary
 
 # Maximum number of models to run in parallel
 MAX_PARALLEL_MODELS = 2
@@ -163,27 +164,12 @@ async def main():
         output_dir=args.output_dir,
     )
 
-    # Print summary
-    print(f"\n\033[92m{'='*60}\033[0m")
-    print(f"\033[92mOverall Summary\033[0m")
-    print(f"\033[92m{'='*60}\033[0m\n")
-
-    has_errors = False
-    for model in models:
-        model_result = result["models"].get(model, {})
-        if isinstance(model_result, dict):
-            if model_result.get("status") == "error":
-                print(
-                    f"  {args.provider}/{model}: \033[31mError - {model_result.get('error')}\033[0m"
-                )
-                has_errors = True
-            else:
-                passed = model_result.get("passed", 0)
-                total = model_result.get("total", 0)
-                pct = (passed / total * 100) if total > 0 else 0
-                print(f"  {args.provider}/{model}: {passed}/{total} ({pct:.1f}%)")
-
-    print(f"\n\033[92mLeaderboard saved to {result['leaderboard_dir']}\033[0m")
+    has_errors = print_benchmark_summary(
+        models=models,
+        model_results=result["models"],
+        leaderboard_dir=result["leaderboard_dir"],
+        model_label=lambda m: f"{args.provider}/{m}",
+    )
 
     if has_errors:
         sys.exit(1)
