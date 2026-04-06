@@ -86,7 +86,24 @@ def _launch_ink_ui(mode: str):
     sys.exit(result.returncode)
 
 
-def _run_agent_verify(agent_url: str, agent_headers_raw: str | None) -> None:
+def _parse_openrouter_model(model_str: str, provider_arg: str) -> tuple[str, str]:
+    """Split an OpenRouter model string into (provider, model).
+
+    ``google/gemma-4-26b-a4b-it`` → ``("google", "gemma-4-26b-a4b-it")``
+    ``gpt-4o`` with provider ``openai`` → ``("openai", "gpt-4o")``
+    """
+    if "/" in model_str:
+        prov, mod = model_str.split("/", 1)
+        return prov, mod
+    return provider_arg or "openai", model_str
+
+
+def _run_agent_verify(
+    agent_url: str,
+    agent_headers_raw: str | None,
+    models: list[str] | None = None,
+    provider: str = "openrouter",
+) -> None:
     """Verify an external agent connection and print the result."""
     from calibrate.connections import TextAgentConnection
 
@@ -100,11 +117,20 @@ def _run_agent_verify(agent_url: str, agent_headers_raw: str | None) -> None:
 
     agent = TextAgentConnection(url=agent_url, headers=headers)
 
+    # If models provided, verify with first model's parsed params (benchmark mode)
+    model_hint: str | None = None
+    provider_hint: str | None = None
+    if models:
+        provider_hint, model_hint = _parse_openrouter_model(models[0], provider)
+
+    body_preview = '{"messages": [...], "model": "' + model_hint + '", "provider": "' + provider_hint + '"}' \
+        if model_hint else '{"messages": [{"role": "user", "content": "Hi"}]}'
+
     print(f"\nVerifying agent connection: {agent_url}")
-    print('Sending: {"messages": [{"role": "user", "content": "Hi"}]}')
+    print(f"Sending: {body_preview}")
     print("─" * 60)
 
-    result = asyncio.run(agent.verify())
+    result = asyncio.run(agent.verify(model=model_hint, provider=provider_hint))
 
     if result["ok"]:
         print("✓ Connection verified — response format is correct")
@@ -407,7 +433,12 @@ Examples:
             if not args.agent_url:
                 print("Error: --agent-url is required with --verify")
                 sys.exit(1)
-            _run_agent_verify(args.agent_url, args.agent_headers)
+            _run_agent_verify(
+                args.agent_url,
+                args.agent_headers,
+                models=args.model,
+                provider=args.provider,
+            )
         elif args.config is None:
             # No config → interactive mode
             _launch_ink_ui("llm")
@@ -418,7 +449,7 @@ Examples:
                 _config = _json.load(_f)
 
             if _config.get("agent_url"):
-                # External agent path
+                # Agent connection path
                 from calibrate.connections import TextAgentConnection
                 from calibrate.llm import tests as _tests
 
@@ -426,10 +457,13 @@ Examples:
                     url=_config["agent_url"],
                     headers=_config.get("agent_headers"),
                 )
+                _models = args.model if args.model else []
                 asyncio.run(_tests.run(
                     agent=_agent,
                     test_cases=_config["test_cases"],
                     output_dir=args.output_dir,
+                    models=_models if _models else None,
+                    provider=args.provider,
                 ))
             else:
                 from calibrate.llm.benchmark import main as llm_benchmark_main
@@ -449,7 +483,12 @@ Examples:
             if not args.agent_url:
                 print("Error: --agent-url is required with --verify")
                 sys.exit(1)
-            _run_agent_verify(args.agent_url, args.agent_headers)
+            _run_agent_verify(
+                args.agent_url,
+                args.agent_headers,
+                models=getattr(args, "model", None),
+                provider=getattr(args, "provider", "openrouter"),
+            )
         # Hidden leaderboard subcommand (used by Ink UI)
         elif getattr(args, "sim_subcmd", None) == "leaderboard":
             from calibrate.llm.simulation_leaderboard import (

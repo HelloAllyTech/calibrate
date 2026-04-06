@@ -89,7 +89,12 @@ class _Tests:
 
         # Create output directory
         if agent is not None:
-            save_folder_name = "external_agent"
+            # When benchmarking with agent, use model name as folder so leaderboard works.
+            # Fall back to "external_agent" for plain test runs (no model selected).
+            if model:
+                save_folder_name = model.replace("/", "__")
+            else:
+                save_folder_name = "external_agent"
         else:
             save_folder_name = f"{provider}/{model}" if provider == "openai" else f"{model}"
             save_folder_name = save_folder_name.replace("/", "__")
@@ -114,12 +119,26 @@ class _Tests:
         results = []
         results_file_path = os.path.join(final_output_dir, "results.json")
 
+        # Parse model/provider hint for agent benchmarking.
+        # OpenRouter format: "google/gemma-4-26b" → provider="google", model="gemma-4-26b"
+        # OpenAI format: "gpt-4o" → provider="openai", model="gpt-4o"
+        agent_model_hint: Optional[str] = None
+        agent_provider_hint: Optional[str] = None
+        if agent is not None and model:
+            if "/" in model:
+                agent_provider_hint, agent_model_hint = model.split("/", 1)
+            else:
+                agent_provider_hint = provider or "openai"
+                agent_model_hint = model
+
         for test_case_index, test_case in enumerate(test_cases):
             if agent is not None:
                 result = await _run_test_external(
                     chat_history=test_case["history"],
                     evaluation=test_case["evaluation"],
                     agent=agent,
+                    model=agent_model_hint,
+                    provider=agent_provider_hint,
                 )
             else:
                 agent_language = test_case.get("settings", {}).get("language", "english")
@@ -239,7 +258,27 @@ class _Tests:
         """
         tools = tools or []
 
-        # External agent: single run, no multi-model loop
+        # External agent benchmark: run once per model, passing model hint in each request
+        if agent is not None and models and len(models) > 0:
+            semaphore = asyncio.Semaphore(max_parallel)
+
+            async def run_agent_model(m: str) -> dict:
+                async with semaphore:
+                    return await _Tests._run_single_model(
+                        system_prompt="",
+                        tools=[],
+                        test_cases=test_cases,
+                        output_dir=output_dir,
+                        model=m,
+                        provider=provider,
+                        run_name=run_name,
+                        agent=agent,
+                    )
+
+            results = await asyncio.gather(*[run_agent_model(m) for m in models])
+            return {m: r for m, r in zip(models, results)}
+
+        # External agent: single run (no model selection)
         if agent is not None:
             return await _Tests._run_single_model(
                 system_prompt=system_prompt,

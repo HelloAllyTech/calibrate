@@ -263,8 +263,9 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     if (!getCredential("OPENAI_API_KEY")) {
       needed.push("OPENAI_API_KEY");
     }
-    // Need OPENROUTER_API_KEY if using OpenRouter
-    if (provider === "openrouter") {
+    // Need OPENROUTER_API_KEY only for internal agent using OpenRouter
+    // Agent connection path does not use provider/model, so skip this check
+    if (!config.agentUrl && provider === "openrouter") {
       if (!getCredential("OPENROUTER_API_KEY")) {
         needed.push("OPENROUTER_API_KEY");
       }

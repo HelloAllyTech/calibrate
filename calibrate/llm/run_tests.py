@@ -1,7 +1,7 @@
 import asyncio
 import argparse
 import uuid
-from typing import List, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
@@ -475,12 +475,16 @@ async def run_test(
 async def call_text_agent(
     messages: List[dict],
     agent: "TextAgentConnection",
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
 ) -> dict:
     """POST a messages array to an external agent and return its output.
 
     Args:
         messages: List of ``{"role": ..., "content": ...}`` dicts.
         agent: A :class:`~calibrate.connections.TextAgentConnection`.
+        model: Optional model name hint for benchmarking (e.g. ``"gemma-4-26b-a4b-it"``).
+        provider: Optional provider hint for benchmarking (e.g. ``"google"``).
 
     Returns:
         dict with ``response`` (str | None) and ``tool_calls`` (list) keys.
@@ -489,10 +493,16 @@ async def call_text_agent(
     if agent.headers:
         req_headers.update(agent.headers)
 
+    body: dict = {"messages": messages}
+    if model is not None:
+        body["model"] = model
+    if provider is not None:
+        body["provider"] = provider
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
             agent.url,
-            json={"messages": messages},
+            json=body,
             headers=req_headers,
         )
         resp.raise_for_status()
@@ -508,6 +518,8 @@ async def run_test_external(
     chat_history: List[dict],
     evaluation: dict,
     agent,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
 ) -> dict:
     """Run a single LLM test case against an external text agent.
 
@@ -520,12 +532,14 @@ async def run_test_external(
     Args:
         chat_history: Conversation history (role/content dicts, no system message).
         evaluation: Evaluation dict with ``type`` and criteria.
-        agent: A :class:`~calibrate.connections.TextAgentConnection` or async callable.
+        agent: A :class:`~calibrate.connections.TextAgentConnection`.
+        model: Optional model hint included in the request body (for benchmarking).
+        provider: Optional provider hint included in the request body (for benchmarking).
 
     Returns:
         dict with ``output`` and ``metrics`` keys.
     """
-    output = await call_text_agent(chat_history, agent)
+    output = await call_text_agent(chat_history, agent, model=model, provider=provider)
     response = output.get("response")
     tool_calls = output.get("tool_calls", [])
 

@@ -718,7 +718,7 @@ async def run_single_simulation_task(
                             "max_turns", DEFAULT_MAX_TURNS
                         ),
                         user_model=getattr(args, "model", "gpt-4.1"),
-                        user_provider=getattr(args, "provider", "openai"),
+                        user_provider="openai",
                         output_dir=simulation_output_dir,
                     )
                 else:
