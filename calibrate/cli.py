@@ -86,6 +86,35 @@ def _launch_ink_ui(mode: str):
     sys.exit(result.returncode)
 
 
+def _run_agent_verify(agent_url: str, agent_headers_raw: str | None) -> None:
+    """Verify an external agent connection and print the result."""
+    from calibrate.connections import TextAgentConnection
+
+    headers = None
+    if agent_headers_raw:
+        try:
+            headers = json.loads(agent_headers_raw)
+        except json.JSONDecodeError:
+            print("✗ --agent-headers is not valid JSON")
+            sys.exit(1)
+
+    agent = TextAgentConnection(url=agent_url, headers=headers)
+
+    print(f"\nVerifying agent connection: {agent_url}")
+    print('Sending: {"messages": [{"role": "user", "content": "Hi"}]}')
+    print("─" * 60)
+
+    result = asyncio.run(agent.verify())
+
+    if result["ok"]:
+        print("✓ Connection verified — response format is correct")
+    else:
+        print(f"✗ Verification failed: {result['error']}")
+        if "details" in result:
+            print(f"  Details: {result['details']}")
+        sys.exit(1)
+
+
 def main():
     """Main CLI entry point that dispatches to component-specific scripts."""
     # Load environment variables from .env file
@@ -184,6 +213,7 @@ Examples:
     # `calibrate llm` with no args → interactive UI
     # `calibrate llm -c config.json -m model ...` → single model (run_tests.py)
     # `calibrate llm -c config.json -m model1 model2 ...` → multi-model (benchmark.py)
+    # `calibrate llm --verify --agent-url URL` → verify external agent connection
     llm_parser = subparsers.add_parser(
         "llm",
         help="LLM evaluation — test agent responses and tool calls",
@@ -209,9 +239,27 @@ Examples:
         choices=["openai", "openrouter"],
         help="LLM provider",
     )
+    llm_parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Verify an external agent connection by sending a preset message and checking the response format",
+    )
+    llm_parser.add_argument(
+        "--agent-url",
+        type=str,
+        default=None,
+        help="External agent endpoint URL (required with --verify)",
+    )
+    llm_parser.add_argument(
+        "--agent-headers",
+        type=str,
+        default=None,
+        help='HTTP headers for the agent as a JSON string, e.g. \'{"Authorization": "Bearer sk-..."}\'',
+    )
     # ── Simulations ─────────────────────────────────────────────
     # `calibrate simulations` with no args → interactive UI
     # `calibrate simulations --type text -c config.json ...` → run directly
+    # `calibrate simulations --verify --agent-url URL` → verify external agent
     sim_parser = subparsers.add_parser(
         "simulations",
         help="Run text or voice simulations",
@@ -251,6 +299,23 @@ Examples:
         type=int,
         default=1,
         help="Number of simulations to run in parallel",
+    )
+    sim_parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Verify an external agent connection by sending a preset message and checking the response format",
+    )
+    sim_parser.add_argument(
+        "--agent-url",
+        type=str,
+        default=None,
+        help="External agent endpoint URL (required with --verify)",
+    )
+    sim_parser.add_argument(
+        "--agent-headers",
+        type=str,
+        default=None,
+        help='HTTP headers for the agent as a JSON string, e.g. \'{"Authorization": "Bearer sk-..."}\'',
     )
 
     # Hidden internal subcommand for simulation leaderboard
@@ -338,7 +403,12 @@ Examples:
             _launch_ink_ui("tts")
 
     elif args.component == "llm":
-        if args.config is None:
+        if getattr(args, "verify", False):
+            if not args.agent_url:
+                print("Error: --agent-url is required with --verify")
+                sys.exit(1)
+            _run_agent_verify(args.agent_url, args.agent_headers)
+        elif args.config is None:
             # No config → interactive mode
             _launch_ink_ui("llm")
         else:
@@ -358,8 +428,13 @@ Examples:
             asyncio.run(llm_benchmark_main())
 
     elif args.component == "simulations":
+        if getattr(args, "verify", False):
+            if not args.agent_url:
+                print("Error: --agent-url is required with --verify")
+                sys.exit(1)
+            _run_agent_verify(args.agent_url, args.agent_headers)
         # Hidden leaderboard subcommand (used by Ink UI)
-        if getattr(args, "sim_subcmd", None) == "leaderboard":
+        elif getattr(args, "sim_subcmd", None) == "leaderboard":
             from calibrate.llm.simulation_leaderboard import (
                 main as leaderboard_main,
             )
