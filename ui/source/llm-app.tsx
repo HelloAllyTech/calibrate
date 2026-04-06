@@ -79,6 +79,8 @@ interface LlmConfig {
   overwrite: boolean;
   envVars: Record<string, string>;
   calibrate: CalibrateCmd;
+  agentUrl: string;
+  agentHeaders: Record<string, string>;
 }
 
 // ─── Main Component ──────────────────────────────────────────
@@ -93,6 +95,8 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     overwrite: false,
     envVars: {},
     calibrate: { cmd: "calibrate", args: [] },
+    agentUrl: "",
+    agentHeaders: {},
   });
 
   // ── overwrite confirmation state ──
@@ -161,7 +165,7 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
         setStep("enter-model");
         break;
       case "output-dir":
-        setStep("model-confirm");
+        setStep(config.agentUrl ? "config-path" : "model-confirm");
         break;
       case "output-dir-confirm":
         setStep("output-dir");
@@ -279,10 +283,10 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
   useEffect(() => {
     if (step !== "running") return;
 
-    // Initialize model states
     const initialStates: Record<string, ModelState> = {};
-    for (const model of config.models) {
-      initialStates[model] = { status: "waiting", logs: [] };
+    const keys = config.agentUrl ? ["external_agent"] : config.models;
+    for (const key of keys) {
+      initialStates[key] = { status: "waiting", logs: [] };
     }
     setModelStates(initialStates);
     setPhase("eval");
@@ -308,18 +312,32 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     Object.assign(env, config.envVars);
     env.PYTHONUNBUFFERED = "1";
 
-    const cmdArgs = [
-      ...bin.args,
-      "llm",
-      "-c",
-      config.configPath,
-      "-o",
-      config.outputDir,
-      "-m",
-      model,
-      "-p",
-      config.provider,
-    ];
+    const cmdArgs = config.agentUrl
+      ? [
+          ...bin.args,
+          "llm",
+          "-c",
+          config.configPath,
+          "-o",
+          config.outputDir,
+          "--agent-url",
+          config.agentUrl,
+          ...(Object.keys(config.agentHeaders).length > 0
+            ? ["--agent-headers", JSON.stringify(config.agentHeaders)]
+            : []),
+        ]
+      : [
+          ...bin.args,
+          "llm",
+          "-c",
+          config.configPath,
+          "-o",
+          config.outputDir,
+          "-m",
+          model,
+          "-p",
+          config.provider,
+        ];
 
     setModelStates((prev) => ({
       ...prev,
@@ -407,7 +425,8 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
       (s) => s.status === "done" || s.status === "error"
     ).length;
 
-    if (completedCount >= config.models.length) {
+    const runKeys = config.agentUrl ? ["external_agent"] : config.models;
+    if (completedCount >= runKeys.length) {
       // All models done, generate leaderboard then finish
       setPhase("leaderboard");
 
@@ -450,9 +469,9 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     // Start more models if we have capacity
     if (
       runningCount < MAX_PARALLEL_MODELS &&
-      nextModelIdx < config.models.length
+      nextModelIdx < runKeys.length
     ) {
-      const model = config.models[nextModelIdx]!;
+      const model = runKeys[nextModelIdx]!;
       setNextModelIdx((idx) => idx + 1);
       startModel(model);
     }
@@ -461,9 +480,10 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
   // ── Load metrics for leaderboard ──
   const loadMetrics = () => {
     const results: typeof metrics = [];
-    for (const model of config.models) {
+    const metricKeys = config.agentUrl ? ["external_agent"] : config.models;
+    for (const model of metricKeys) {
       try {
-        const modelDir = getModelDir(model);
+        const modelDir = config.agentUrl ? "external_agent" : getModelDir(model);
         const resultsPath = path.join(
           config.outputDir,
           modelDir,
@@ -534,7 +554,7 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
   useEffect(() => {
     if (!selectedModel) return;
     try {
-      const modelDir = getModelDir(selectedModel);
+      const modelDir = selectedModel === "external_agent" ? "external_agent" : getModelDir(selectedModel);
       const resultsPath = path.join(config.outputDir, modelDir, "results.json");
       if (fs.existsSync(resultsPath)) {
         const data = JSON.parse(fs.readFileSync(resultsPath, "utf-8"));
@@ -646,8 +666,17 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
                     setConfigInput("");
                     return;
                   }
-                  setConfig((c) => ({ ...c, configPath: resolved }));
-                  setStep("provider");
+                  let agentUrl = "";
+                  let agentHeaders: Record<string, string> = {};
+                  try {
+                    const parsed = JSON.parse(fs.readFileSync(resolved, "utf-8"));
+                    agentUrl = parsed.agent_url || "";
+                    agentHeaders = parsed.agent_headers || {};
+                  } catch {
+                    // ignore parse errors, treat as internal agent
+                  }
+                  setConfig((c) => ({ ...c, configPath: resolved, agentUrl, agentHeaders }));
+                  setStep(agentUrl ? "output-dir" : "provider");
                 }
               }}
               placeholder="./config.json"

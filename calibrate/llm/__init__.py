@@ -119,7 +119,7 @@ class _Tests:
                 result = await _run_test_external(
                     chat_history=test_case["history"],
                     evaluation=test_case["evaluation"],
-                    connection=agent,
+                    agent=agent,
                 )
             else:
                 agent_language = test_case.get("settings", {}).get("language", "english")

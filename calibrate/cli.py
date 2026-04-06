@@ -413,19 +413,36 @@ Examples:
             _launch_ink_ui("llm")
         else:
             # Direct mode: run tests with provided config
-            from calibrate.llm.benchmark import main as llm_benchmark_main
+            import json as _json
+            with open(args.config) as _f:
+                _config = _json.load(_f)
 
-            models = (
-                args.model if args.model else ["gpt-4.1"]
-            )  # Default to gpt-4.1 if not specified
+            if _config.get("agent_url"):
+                # External agent path
+                from calibrate.connections import TextAgentConnection
+                from calibrate.llm import tests as _tests
 
-            argv = ["calibrate", "-c", args.config]
-            argv.extend(["-o", args.output_dir])
-            argv.extend(["-m"] + models)
-            argv.extend(["-p", args.provider])
+                _agent = TextAgentConnection(
+                    url=_config["agent_url"],
+                    headers=_config.get("agent_headers"),
+                )
+                asyncio.run(_tests.run(
+                    agent=_agent,
+                    test_cases=_config["test_cases"],
+                    output_dir=args.output_dir,
+                ))
+            else:
+                from calibrate.llm.benchmark import main as llm_benchmark_main
 
-            sys.argv = argv
-            asyncio.run(llm_benchmark_main())
+                models = args.model if args.model else ["gpt-4.1"]
+
+                argv = ["calibrate", "-c", args.config]
+                argv.extend(["-o", args.output_dir])
+                argv.extend(["-m"] + models)
+                argv.extend(["-p", args.provider])
+
+                sys.argv = argv
+                asyncio.run(llm_benchmark_main())
 
     elif args.component == "simulations":
         if getattr(args, "verify", False):
