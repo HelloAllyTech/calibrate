@@ -11,18 +11,20 @@ description: "Run simulated conversations to test your agent end-to-end"
   allowFullScreen
 ></iframe>
 
-## Configuration
+## Set up your agent
 
-You need to create a config file that defines the following:
+There are two ways to run text simulations:
 
-- Instructions for your agent (system prompt)
-- Tools available to your agent
-- Personas that simulate different user types
-- Scenarios that define conversation patterns
-- Evaluation criteria to measure agent performance
-- The STT, TTS, and LLM providers to use (for voice simulations only)
+- **Calibrate agent** — define your agent's system prompt and tools directly in the config file. Calibrate runs the simulation using an LLM of your choice.
+- **Agent connection** — point calibrate at your existing agent's HTTP endpoint. Calibrate's user simulator sends messages to it and evaluates the full conversation. No need to redefine your agent.
 
-This section explains the different keys in the config file.
+Voice simulations always use the Calibrate agent path.
+
+---
+
+## Calibrate agent
+
+This section explains the config file keys for the Calibrate agent path.
 
 ### `system_prompt`
 
@@ -156,7 +158,58 @@ For voice simulations, specify the STT, LLM, and TTS providers:
 
 ### Full example
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/agent/simulation/sample_text.json) for a text simulation and [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/agent/simulation/sample_voice.json) for a voice simulation.
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/agent/simulation/sample_text.json) for a text simulation and [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/agent/simulation/sample_voice.json) for a voice simulation.
+
+---
+
+## Agent connection
+
+If you already have an agent running, you can connect calibrate directly to it for text simulations. The user simulator inside calibrate sends messages to your agent and evaluates the full conversation — your agent does not need to know anything about calibrate.
+
+### `agent_url` and `agent_headers`
+
+Same as LLM evaluation. See [Agent connection](/cli/text-to-text#agent-connection) for the full request/response format contract.
+
+### `personas`, `scenarios`, and `evaluation_criteria`
+
+These work identically to the Calibrate agent path — define them the same way. Your agent owns its tools internally, so `system_prompt` and `tools` are not needed.
+
+### Full example
+
+```json
+{
+  "agent_url": "https://your-agent.com/chat",
+  "agent_headers": {
+    "Authorization": "Bearer YOUR_API_KEY"
+  },
+  "personas": [
+    {
+      "label": "friendly customer",
+      "characteristics": "You are a friendly customer who wants to check your order status. Your order ID is ORD-12345.",
+      "gender": "neutral",
+      "language": "english"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "order inquiry",
+      "description": "Ask about your order status and provide your order ID."
+    }
+  ],
+  "evaluation_criteria": [
+    {
+      "name": "order_resolved",
+      "description": "The agent should look up and clearly communicate the order status."
+    }
+  ]
+}
+```
+
+### Verify your connection
+
+```bash
+calibrate simulations --verify --agent-url https://your-agent.com/chat --agent-headers '{"Authorization": "Bearer YOUR_API_KEY"}'
+```
 
 ## Get started
 
@@ -164,15 +217,27 @@ Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/
 calibrate simulations
 ```
 
-The interactive UI guides you through the full simulation process:
+The interactive UI guides you through the full simulation process.
+
+**Calibrate agent:**
 
 1. **Simulation type** — text (LLM-only) or voice (full STT → LLM → TTS pipeline)
-2. **Config file** — path to the config file you created in the [previous](#configuration) section
+2. **Config file** — path to your config file
 3. **Provider** — OpenRouter or OpenAI (text simulations only)
 4. **Model** — enter the model you want to use for the simulation (text simulations only)
 5. **Parallel count** — run multiple simulations simultaneously (default: `1`)
 6. **Output directory** — where results will be saved (defaults to `./out`)
 7. **API keys** — enter the API keys for the selected providers
+
+**Agent connection:**
+
+1. **Simulation type** — text only
+2. **Config file** — path to your config file (with `agent_url` set)
+3. **Parallel count** — run multiple simulations simultaneously (default: `1`)
+4. **Output directory** — where results will be saved (defaults to `./out`)
+5. **API keys** — only `OPENAI_API_KEY` is required (used by the user simulator and LLM judge)
+
+The provider and model selection steps are skipped — calibrate's user simulator connects directly to your agent.
 
 Simulated conversations are run for all persona × scenario combinations. For example, with 2 personas and 2 scenarios, you get 4 simulations.
 

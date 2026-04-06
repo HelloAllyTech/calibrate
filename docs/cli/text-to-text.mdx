@@ -22,7 +22,7 @@ There are two ways to run LLM evaluations:
 
 Define your agent's system prompt and tools directly in the config file. Calibrate runs the evaluation using an LLM of your choice.
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-internal-agent.json) for a full template.
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-internal-agent.json) for a full template.
 
 #### `system_prompt`
 
@@ -45,14 +45,14 @@ A list of tools available to your agent. See the guide on [Configuring Tools](/g
 
 If you already have an agent running, you can connect calibrate directly to it instead of redefining your agent's system prompt and tools.
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-external-agent.json) for a full template.
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-external-agent.json) for a full template.
 
 #### Connect your agent
 
-| Key             | Required | Description                                                         |
-| --------------- | -------- | ------------------------------------------------------------------- |
-| `agent_url`     | Yes      | The URL calibrate will make a POST request to                       |
-| `agent_headers` | No       | HTTP headers included in every request — typically for auth         |
+| Key             | Required | Description                                                 |
+| --------------- | -------- | ----------------------------------------------------------- |
+| `agent_url`     | Yes      | The URL calibrate will make a POST request to               |
+| `agent_headers` | No       | HTTP headers included in every request — typically for auth |
 
 ```json
 {
@@ -168,7 +168,7 @@ For agent connection, your agent owns its tools internally — there is no need 
 
 <AccordionGroup>
   <Accordion title="Calibrate agent example">
-    See the [full file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-internal-agent.json).
+    See the [full file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-internal-agent.json).
 
     ```json
     {
@@ -240,10 +240,11 @@ For agent connection, your agent owns its tools internally — there is no need 
       ]
     }
     ```
+
   </Accordion>
 
   <Accordion title="Agent connection example">
-    See the [full file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-external-agent.json).
+    See the [full file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-external-agent.json).
 
     ```json
     {
@@ -277,6 +278,7 @@ For agent connection, your agent owns its tools internally — there is no need 
       ]
     }
     ```
+
   </Accordion>
 </AccordionGroup>
 
@@ -300,12 +302,28 @@ The interactive UI guides you through the full evaluation process.
 
 The evaluation runs the selected models in parallel (max 2 at a time), showing the results for each test as they are ready.
 
-**Agent connection:**
+**Agent connection — single run:**
 
 1. **Config file** — path to your config file (with `agent_url` set)
 2. **Output directory** — where results will be saved (defaults to `./out`)
 
-The provider and model selection steps are skipped — calibrate connects directly to your agent.
+The provider and model selection steps are skipped — calibrate connects directly to your agent. Results are saved to `external_agent/` inside the output directory.
+
+**Agent connection — benchmark across models:**
+
+To benchmark your agent across multiple models, pass one or more model names with `-m`. Calibrate runs the same test cases once per model, including the model name and provider in each request so your agent can route to the right model.
+
+```bash
+calibrate llm -c config.json -m google/gemma-4-26b-a4b-it openai/gpt-4o -o ./out
+```
+
+Models follow the OpenRouter format: `provider/model-name`. Each model gets its own results folder and appears as a separate entry in the leaderboard.
+
+Verify your connection works with a specific model before running:
+
+```bash
+calibrate llm --verify --agent-url https://your-agent.com/chat -m google/gemma-4-26b-a4b-it
+```
 
 ## Output
 
