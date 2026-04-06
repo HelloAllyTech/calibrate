@@ -212,10 +212,10 @@ class TestParseOpenrouterModel(unittest.TestCase):
     def test_openai_slash_format(self):
         self.assertEqual(self._parse("openai/gpt-4o"), ("openai", "gpt-4o"))
 
-    def test_plain_model_uses_provider_arg(self):
+    def test_openai_model_uses_provider_arg(self):
         self.assertEqual(self._parse("gpt-4o", "openai"), ("openai", "gpt-4o"))
 
-    def test_plain_model_defaults_to_openai_when_no_provider(self):
+    def test_openai_model_defaults_to_openai_when_no_provider(self):
         self.assertEqual(self._parse("gpt-4o", ""), ("openai", "gpt-4o"))
 
     def test_nested_slash_only_splits_on_first(self):
@@ -271,7 +271,7 @@ class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
         folder = await self._get_folder("google/gemma-4-26b-a4b-it")
         self.assertEqual(folder, "google__gemma-4-26b-a4b-it")
 
-    async def test_plain_model_folder_is_model_name(self):
+    async def test_openai_model_folder_is_model_name(self):
         folder = await self._get_folder("gpt-4o")
         self.assertEqual(folder, "gpt-4o")
 
