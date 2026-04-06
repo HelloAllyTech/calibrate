@@ -290,9 +290,9 @@ For agent connection, your agent owns its tools internally — there is no need 
 calibrate llm
 ```
 
-The interactive UI guides you through the full evaluation process.
+### Calibrate agent
 
-**Calibrate agent:**
+The interactive UI guides you through:
 
 1. **Config file** — path to your config file
 2. **Provider** — OpenRouter or OpenAI
@@ -302,16 +302,17 @@ The interactive UI guides you through the full evaluation process.
 
 The evaluation runs the selected models in parallel (max 2 at a time), showing the results for each test as they are ready.
 
-**Agent connection — single run:**
+### Agent connection
 
-1. **Config file** — path to your config file (with `agent_url` set)
-2. **Output directory** — where results will be saved (defaults to `./out`)
+**Single run** — set `agent_url` in your config and run:
+
+```bash
+calibrate llm -c config.json -o ./out
+```
 
 The provider and model selection steps are skipped — calibrate connects directly to your agent. Results are saved directly to the output directory.
 
-**Agent connection — benchmark across models:**
-
-To benchmark your agent across multiple models, pass one or more model names with `-m`. Calibrate runs the same test cases once per model, including the model name and provider in each request so your agent can route to the right model.
+**Benchmark across models** — pass one or more model names with `-m`. Calibrate runs the same test cases once per model, including the model name and provider in each request so your agent can route to the right model.
 
 ```bash
 calibrate llm -c config.json -m google/gemma-4-26b-a4b-it openai/gpt-4o -o ./out
@@ -319,9 +320,10 @@ calibrate llm -c config.json -m google/gemma-4-26b-a4b-it openai/gpt-4o -o ./out
 
 Models follow the OpenRouter format: `provider/model-name`. Each model gets its own results folder and appears as a separate entry in the leaderboard.
 
-Verify your connection works with a specific model before running:
+Verify your connection works before running — optionally with a specific model:
 
 ```bash
+calibrate llm --verify --agent-url https://your-agent.com/chat
 calibrate llm --verify --agent-url https://your-agent.com/chat -m google/gemma-4-26b-a4b-it
 ```
 
