@@ -18,13 +18,11 @@ There are two ways to run LLM evaluations:
 - **Calibrate agent** — define your agent's system prompt and tools directly in the config file. Calibrate runs the evaluation using an LLM of your choice.
 - **Agent connection** — point calibrate at your existing agent's HTTP endpoint. Calibrate sends test inputs to it and evaluates the responses. No need to redefine your agent.
 
----
-
-## Calibrate agent
+### Calibrate agent
 
 Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-internal-agent.json) for a full template.
 
-### `system_prompt`
+#### `system_prompt`
 
 The system prompt that defines your agent's behavior. This is the same prompt you use in production.
 
@@ -37,21 +35,35 @@ You help customers with:
 3. Answering product questions
 ```
 
-### `tools`
+#### `tools`
 
 A list of tools available to your agent. See the guide on [Configuring Tools](/guides/configuring-tools) for how to set it up along with examples for different tool types.
 
----
-
-## Agent connection
+### Agent connection
 
 If you already have an agent running, you can connect calibrate directly to it instead of redefining your agent's system prompt and tools.
 
 Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-external-agent.json) for a full template.
 
-### `agent_url`
+#### Connect your agent
 
-The HTTP endpoint calibrate will POST to. Your endpoint must accept the following request body:
+| Key             | Required | Description                                                         |
+| --------------- | -------- | ------------------------------------------------------------------- |
+| `agent_url`     | Yes      | The URL calibrate will make a POST request to                       |
+| `agent_headers` | No       | HTTP headers included in every request — typically for auth         |
+
+```json
+{
+  "agent_url": "https://your-agent.com/chat",
+  "agent_headers": {
+    "Authorization": "Bearer YOUR_API_KEY"
+  }
+}
+```
+
+#### Request format
+
+Calibrate will make a POST request to your `agent_url` with the following body:
 
 ```json
 {
@@ -62,19 +74,7 @@ The HTTP endpoint calibrate will POST to. Your endpoint must accept the followin
 }
 ```
 
-### `agent_headers`
-
-Optional. HTTP headers to include in every request — typically used for authentication.
-
-```json
-{
-  "agent_headers": {
-    "Authorization": "Bearer YOUR_API_KEY"
-  }
-}
-```
-
-### Response format
+#### Response format
 
 Your agent must return a JSON response with at least one of these keys:
 
@@ -92,7 +92,7 @@ Each item in `tool_calls` must have:
 }
 ```
 
-### Verify your connection
+#### Verify your connection
 
 Before running evaluations, you can verify that your agent endpoint is reachable and returns the expected format:
 
