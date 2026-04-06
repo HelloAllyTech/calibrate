@@ -3,7 +3,10 @@ import argparse
 import json
 import sys
 import uuid
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from calibrate.connections import TextAgentConnection
 from loguru import logger
 import os
 from os.path import join, exists, splitext, basename
@@ -513,6 +516,123 @@ async def run_simulation(
     }
 
 
+async def run_simulation_with_agent(
+    agent,
+    user_system_prompt: str,
+    evaluation_criteria: list[dict],
+    agent_speaks_first: bool = True,
+    max_turns: int = DEFAULT_MAX_TURNS,
+    user_model: str = "gpt-4.1",
+    user_provider: str = "openai",
+    output_dir: Optional[str] = None,
+) -> dict:
+    """Run a text simulation where the agent is an external HTTP endpoint.
+
+    The user side is an internal LLM acting as a persona/scenario-driven user.
+    The agent side is called via HTTP POST on each turn using
+    :func:`~calibrate.llm.run_tests.call_text_agent`.
+
+    Args:
+        agent: External agent connection.
+        user_system_prompt: System prompt for the simulated user.
+        evaluation_criteria: List of criteria dicts with ``name`` and ``description``.
+        agent_speaks_first: Whether the agent sends the first message. Default: True.
+        max_turns: Maximum agent turns before ending. Default: 50.
+        user_model: Model for the user simulator. Default: ``gpt-4.1``.
+        user_provider: Provider for the user simulator. Default: ``openai``.
+        output_dir: Optional directory to save intermediate transcript.
+
+    Returns:
+        dict with ``transcript`` and ``evaluation_results`` keys.
+    """
+    from openai import AsyncOpenAI as _AsyncOpenAI
+    from calibrate.llm.run_tests import call_text_agent
+
+    # User LLM client
+    if user_provider == "openrouter":
+        user_client = _AsyncOpenAI(
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+            base_url="https://openrouter.ai/api/v1",
+        )
+    else:
+        user_client = _AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    # Messages the user simulator tracks (role-flipped: agent→user, user→assistant)
+    user_messages = [{"role": "system", "content": user_system_prompt}]
+    # Messages sent to the external agent (standard role: user→user, agent→assistant)
+    agent_messages: list[dict] = []
+    # Full transcript for evaluation
+    transcript: list[dict] = []
+    max_turns_reached = False
+
+    def _agent_text(output: dict) -> str:
+        """Extract displayable text from agent output for conversation flow."""
+        return output.get("response") or ""
+
+    if agent_speaks_first:
+        agent_messages.append({"role": "user", "content": "Hi"})
+        agent_output = await call_text_agent(agent_messages, agent)
+        agent_text = _agent_text(agent_output)
+        agent_messages.append({"role": "assistant", "content": agent_text})
+        transcript.append({"role": "assistant", "content": agent_text})
+        log_and_print(f"\033[94m[Agent]: {agent_text}\033[0m")
+        # Prepare user simulator: agent's first message becomes user's input
+        user_messages.append({"role": "user", "content": agent_text})
+
+    for turn in range(max_turns):
+        # --- User simulator turn ---
+        user_resp = await user_client.chat.completions.create(
+            model=user_model,
+            messages=user_messages,
+        )
+        user_message = user_resp.choices[0].message.content.strip()
+        user_messages.append({"role": "assistant", "content": user_message})
+        transcript.append({"role": "user", "content": user_message})
+        log_and_print(f"\033[93m[User]: {user_message}\033[0m")
+
+        # --- External agent turn ---
+        agent_messages.append({"role": "user", "content": user_message})
+        agent_output = await call_text_agent(agent_messages, agent)
+        agent_text = _agent_text(agent_output)
+        agent_messages.append({"role": "assistant", "content": agent_text})
+        transcript.append({"role": "assistant", "content": agent_text})
+        log_and_print(f"\033[94m[Agent]: {agent_text}\033[0m")
+
+        # Prepare user simulator for next turn
+        user_messages.append({"role": "user", "content": agent_text})
+
+        if turn + 1 >= max_turns:
+            max_turns_reached = True
+
+    if max_turns_reached:
+        transcript.append({"role": "end_reason", "content": "max_turns"})
+
+    # Save intermediate transcript
+    if output_dir:
+        transcript_path = join(output_dir, "transcript.json")
+        with open(transcript_path, "w") as f:
+            json.dump(transcript, f, indent=4)
+
+    log_and_print(
+        f"Evaluating the conversation based on the criteria:\n\n{evaluation_criteria}"
+    )
+    llm_judge_result = await evaluate_simuation(transcript, evaluation_criteria)
+
+    evaluation_results = [
+        {
+            "name": criterion["name"],
+            "value": int(llm_judge_result[criterion["name"]]["match"]),
+            "reasoning": llm_judge_result[criterion["name"]]["reasoning"],
+        }
+        for criterion in evaluation_criteria
+    ]
+
+    return {
+        "transcript": transcript,
+        "evaluation_results": evaluation_results,
+    }
+
+
 async def run_single_simulation_task(
     semaphore: asyncio.Semaphore,
     config: dict,
@@ -522,6 +642,7 @@ async def run_single_simulation_task(
     scenario: dict,
     output_dir: str,
     args,
+    agent: Optional["TextAgentConnection"] = None,
 ):
     """Run a single simulation task with semaphore for concurrency control."""
     async with semaphore:
@@ -587,22 +708,36 @@ async def run_single_simulation_task(
             log_and_print("--------------------------------")
 
             try:
-                output = await run_simulation(
-                    bot_system_prompt=config["system_prompt"]
-                    + f"\n\nYou must always speak in {language}.",
-                    tools=config["tools"],
-                    user_system_prompt=user_system_prompt,
-                    evaluation_criteria=config["evaluation_criteria"],
-                    bot_model=args.model,
-                    user_model=args.model,
-                    bot_provider=args.provider,
-                    user_provider=args.provider,
-                    agent_speaks_first=agent_speaks_first,
-                    max_turns=config.get("settings", {}).get(
-                        "max_turns", DEFAULT_MAX_TURNS
-                    ),
-                    output_dir=simulation_output_dir,
-                )
+                if agent is not None:
+                    output = await run_simulation_with_agent(
+                        agent=agent,
+                        user_system_prompt=user_system_prompt,
+                        evaluation_criteria=config["evaluation_criteria"],
+                        agent_speaks_first=agent_speaks_first,
+                        max_turns=config.get("settings", {}).get(
+                            "max_turns", DEFAULT_MAX_TURNS
+                        ),
+                        user_model=getattr(args, "model", "gpt-4.1"),
+                        user_provider=getattr(args, "provider", "openai"),
+                        output_dir=simulation_output_dir,
+                    )
+                else:
+                    output = await run_simulation(
+                        bot_system_prompt=config["system_prompt"]
+                        + f"\n\nYou must always speak in {language}.",
+                        tools=config["tools"],
+                        user_system_prompt=user_system_prompt,
+                        evaluation_criteria=config["evaluation_criteria"],
+                        bot_model=args.model,
+                        user_model=args.model,
+                        bot_provider=args.provider,
+                        user_provider=args.provider,
+                        agent_speaks_first=agent_speaks_first,
+                        max_turns=config.get("settings", {}).get(
+                            "max_turns", DEFAULT_MAX_TURNS
+                        ),
+                        output_dir=simulation_output_dir,
+                    )
 
                 simulation_metrics = {
                     "name": simulation_name,

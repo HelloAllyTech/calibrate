@@ -1,12 +1,16 @@
 import asyncio
 import argparse
 import uuid
-from typing import List
+from typing import List, TYPE_CHECKING
 from loguru import logger
+
+if TYPE_CHECKING:
+    from calibrate.connections import TextAgentConnection
 import os
 from os.path import join, exists
 import json
 from pathlib import Path
+import httpx
 from calibrate.utils import configure_print_logger, log_and_print, build_tools_schema
 from pipecat.frames.frames import (
     TranscriptionFrame,
@@ -464,6 +468,103 @@ async def run_test(
 
     return {
         "output": output,
+        "metrics": metrics,
+    }
+
+
+async def call_text_agent(messages: List[dict], agent) -> dict:
+    """Call an external text agent with a messages array and return its output.
+
+    Supports both :class:`~calibrate.connections.TextAgentConnection` (HTTP POST)
+    and plain async callables ``(messages) -> dict``.
+
+    The agent must return (or the HTTP response must contain) a dict with:
+        - ``"response"``: str or None — the agent's text reply
+        - ``"tool_calls"``: list of ``{"tool": str, "arguments": dict}``
+
+    Args:
+        messages: List of ``{"role": ..., "content": ...}`` dicts.
+        agent: A :class:`~calibrate.connections.TextAgentConnection` or async callable.
+
+    Returns:
+        dict with ``response`` (str | None) and ``tool_calls`` (list) keys.
+    """
+    import inspect
+    from calibrate.connections import TextAgentConnection
+
+    if callable(agent) and not isinstance(agent, TextAgentConnection):
+        result = await agent(messages)
+        if isinstance(result, str):
+            return {"response": result, "tool_calls": []}
+        return result
+
+    # HTTP POST
+    payload = {"messages": messages}
+    headers = {"Content-Type": "application/json"}
+    if agent.headers:
+        headers.update(agent.headers)
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(agent.url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+    return {
+        "response": data.get("response"),
+        "tool_calls": data.get("tool_calls", []),
+    }
+
+
+async def run_test_external(
+    chat_history: List[dict],
+    evaluation: dict,
+    agent,
+) -> dict:
+    """Run a single LLM test case against an external text agent.
+
+    Sends ``chat_history`` to the agent and evaluates the response using the
+    same logic as the internal :func:`run_test`.
+
+    The agent must return ``{"response": ..., "tool_calls": [...]}`` — see
+    :func:`call_text_agent` for details.
+
+    Args:
+        chat_history: Conversation history (role/content dicts, no system message).
+        evaluation: Evaluation dict with ``type`` and criteria.
+        agent: A :class:`~calibrate.connections.TextAgentConnection` or async callable.
+
+    Returns:
+        dict with ``output`` and ``metrics`` keys.
+    """
+    output = await call_text_agent(chat_history, agent)
+    response = output.get("response")
+    tool_calls = output.get("tool_calls", [])
+
+    metrics = {"passed": False}
+
+    if evaluation["type"] == "tool_call":
+        metrics = evaluate_tool_calls(tool_calls, evaluation["tool_calls"])
+    elif evaluation["type"] == "response":
+        if response:
+            result = await test_response_llm_judge(
+                conversation=chat_history,
+                response=response,
+                criteria=evaluation["criteria"],
+            )
+            metrics["passed"] = result["match"]
+            metrics["reasoning"] = result["reasoning"]
+        else:
+            if tool_calls:
+                metrics["reasoning"] = (
+                    f"The agent made tool calls {tool_calls} but returned no text response"
+                )
+            else:
+                metrics["reasoning"] = "No reply was returned by the external agent"
+    else:
+        raise ValueError(f"Invalid evaluation type: {evaluation['type']}")
+
+    return {
+        "output": {"response": response, "tool_calls": tool_calls},
         "metrics": metrics,
     }
 
