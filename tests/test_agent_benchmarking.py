@@ -279,6 +279,37 @@ class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
         folder = await self._get_folder("")
         self.assertEqual(folder, "external_agent")
 
+    async def test_default_model_string_does_not_leak_into_folder(self):
+        """Ensure the gpt-4.1 default from tests.run() doesn't create a gpt-4.1 folder
+        when running a single agent connection test with no model selected."""
+        import os
+        import tempfile
+        from calibrate.connections import TextAgentConnection
+        from calibrate.llm import tests as _tests
+
+        agent = TextAgentConnection(url="http://fake-agent/chat")
+        test_cases = [
+            {
+                "history": [{"role": "user", "content": "hi"}],
+                "evaluation": {"type": "response", "criteria": "greet"},
+            }
+        ]
+        mock_judge = AsyncMock(return_value={"match": True, "reasoning": "ok"})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ctx, _ = _patch_httpx({"response": "hello"})
+            with ctx, patch("calibrate.llm.run_tests.test_response_llm_judge", mock_judge):
+                await _tests.run(
+                    agent=agent,
+                    test_cases=test_cases,
+                    output_dir=tmpdir,
+                    # no model/models passed — simulates plain agent connection run
+                )
+            created = [d for d in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, d))]
+            self.assertEqual(len(created), 1)
+            self.assertEqual(created[0], "external_agent")
+            self.assertNotIn("gpt-4.1", created)
+
 
 # ---------------------------------------------------------------------------
 

@@ -278,14 +278,15 @@ class _Tests:
             results = await asyncio.gather(*[run_agent_model(m) for m in models])
             return {m: r for m, r in zip(models, results)}
 
-        # External agent: single run (no model selection)
+        # External agent: single run (no model selection) — pass empty model so
+        # folder name falls back to "external_agent" instead of the default "gpt-4.1"
         if agent is not None:
             return await _Tests._run_single_model(
                 system_prompt=system_prompt,
                 tools=tools,
                 test_cases=test_cases,
                 output_dir=output_dir,
-                model=model,
+                model="",
                 provider=provider,
                 run_name=run_name,
                 agent=agent,
