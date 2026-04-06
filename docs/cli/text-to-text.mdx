@@ -11,22 +11,18 @@ description: "Create edge cases to test the LLM powering your agent"
   allowFullScreen
 ></iframe>
 
-## Configuration
+## Set up your agent
 
 There are two ways to run LLM evaluations:
 
-- **Internal agent** — define your agent's system prompt and tools directly in the config file. Calibrate runs the evaluation using an LLM of your choice.
-- **External agent** — point calibrate at your existing agent's HTTP endpoint. Calibrate sends test inputs to it and evaluates the responses. No need to redefine your agent.
+- **Calibrate agent** — define your agent's system prompt and tools directly in the config file. Calibrate runs the evaluation using an LLM of your choice.
+- **Agent connection** — point calibrate at your existing agent's HTTP endpoint. Calibrate sends test inputs to it and evaluates the responses. No need to redefine your agent.
 
 ---
 
-## Internal agent
+## Calibrate agent
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-internal-agent.json) for a full template. The config defines the following:
-
-- Instructions for your agent
-- Tools available to your agent
-- Test cases to evaluate your agent on
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-internal-agent.json) for a full template.
 
 ### `system_prompt`
 
@@ -45,138 +41,9 @@ You help customers with:
 
 A list of tools available to your agent. See the guide on [Configuring Tools](/guides/configuring-tools) for how to set it up along with examples for different tool types.
 
-### `test_cases`
-
-An array of test cases. These are the scenarios you want to evaluate your agent on. Each test case has:
-
-| Key          | Type   | Description                                                                       |
-| ------------ | ------ | --------------------------------------------------------------------------------- |
-| `history`    | array  | Conversation history as context for the agent to generate the next output         |
-| `evaluation` | object | The criteria for evaluating the agent's output — either a tool call or a response |
-
-**Tool call test** — verifies the LLM calls the correct tool with expected arguments:
-
-```json
-{
-  "history": [
-    { "role": "assistant", "content": "Hello! How can I help you today?" },
-    {
-      "role": "user",
-      "content": "I want to check my order status. My order ID is ORD-12345."
-    }
-  ],
-  "evaluation": {
-    "type": "tool_call",
-    "tool_calls": [
-      {
-        "tool": "check_order",
-        "arguments": {
-          "order_id": "ORD-12345"
-        }
-      }
-    ]
-  }
-}
-```
-
-<Note>
-  Passing `"arguments": null` will make the agent simply check if the tool is
-  called without checking the arguments.
-</Note>
-
-**Response test** — verifies the LLM's response meets the criteria defined (evaluated by an LLM judge):
-
-```json
-{
-  "history": [
-    { "role": "assistant", "content": "Hello! How can I help you today?" },
-    { "role": "user", "content": "What's the weather like?" }
-  ],
-  "evaluation": {
-    "type": "response",
-    "criteria": "The assistant should politely redirect the conversation back to store-related topics."
-  }
-}
-```
-
-### Full example
-
-See the [full example on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-internal-agent.json).
-
-```json
-{
-  "system_prompt": "You are a helpful customer support assistant...",
-  "tools": [
-    {
-      "type": "client",
-      "name": "log_interaction",
-      "description": "Log customer interaction details",
-      "parameters": [
-        {
-          "id": "interaction_type",
-          "type": "string",
-          "description": "Type of interaction",
-          "required": true
-        },
-        {
-          "id": "sentiment",
-          "type": "string",
-          "description": "Customer sentiment",
-          "required": true
-        }
-      ]
-    },
-    {
-      "type": "webhook",
-      "name": "check_order",
-      "description": "Check the status of a customer order",
-      "parameters": [],
-      "webhook": {
-        "method": "GET",
-        "url": "https://api.example.com/orders",
-        "timeout": 10,
-        "headers": [{ "name": "Authorization", "value": "Bearer API_KEY" }],
-        "queryParameters": [
-          {
-            "id": "order_id",
-            "type": "string",
-            "description": "The customer's order ID",
-            "required": true
-          }
-        ]
-      }
-    }
-  ],
-  "test_cases": [
-    {
-      "history": [
-        { "role": "assistant", "content": "Hello! How can I help you today?" },
-        { "role": "user", "content": "Check order ORD-12345" }
-      ],
-      "evaluation": {
-        "type": "tool_call",
-        "tool_calls": [
-          { "tool": "check_order", "arguments": { "order_id": "ORD-12345" } }
-        ]
-      }
-    },
-    {
-      "history": [
-        { "role": "assistant", "content": "Hello! How can I help you today?" },
-        { "role": "user", "content": "What's the weather like?" }
-      ],
-      "evaluation": {
-        "type": "response",
-        "criteria": "The assistant should politely redirect to store-related topics."
-      }
-    }
-  ]
-}
-```
-
 ---
 
-## External agent
+## Agent connection
 
 If you already have an agent running, you can connect calibrate directly to it instead of redefining your agent's system prompt and tools.
 
@@ -211,10 +78,10 @@ Optional. HTTP headers to include in every request — typically used for authen
 
 Your agent must return a JSON response with at least one of these keys:
 
-| Key          | Type            | Description                                      |
-| ------------ | --------------- | ------------------------------------------------ |
-| `response`   | string or null  | The agent's text reply                           |
-| `tool_calls` | array           | Tool calls made by the agent                     |
+| Key          | Type           | Description                  |
+| ------------ | -------------- | ---------------------------- |
+| `response`   | string or null | The agent's text reply       |
+| `tool_calls` | array          | Tool calls made by the agent |
 
 Each item in `tool_calls` must have:
 
@@ -222,45 +89,6 @@ Each item in `tool_calls` must have:
 {
   "tool": "function_name",
   "arguments": { "key": "value" }
-}
-```
-
-### `test_cases`
-
-Same format as internal agent — the `history` and `evaluation` keys work identically. Your agent owns its tools internally so there is no need to define them in the config.
-
-### Full example
-
-```json
-{
-  "agent_url": "https://your-agent.com/chat",
-  "agent_headers": {
-    "Authorization": "Bearer YOUR_API_KEY"
-  },
-  "test_cases": [
-    {
-      "history": [
-        { "role": "assistant", "content": "Hello! How can I help you today?" },
-        { "role": "user", "content": "Check order ORD-12345" }
-      ],
-      "evaluation": {
-        "type": "tool_call",
-        "tool_calls": [
-          { "tool": "check_order", "arguments": { "order_id": "ORD-12345" } }
-        ]
-      }
-    },
-    {
-      "history": [
-        { "role": "assistant", "content": "Hello! How can I help you today?" },
-        { "role": "user", "content": "What's the weather like?" }
-      ],
-      "evaluation": {
-        "type": "response",
-        "criteria": "The assistant should politely redirect to store-related topics."
-      }
-    }
-  ]
 }
 ```
 
@@ -276,6 +104,182 @@ This sends a test message and checks that the response matches the required form
 
 ---
 
+## Test cases
+
+An array of test cases to evaluate your agent on. Each test case has:
+
+| Key          | Type   | Description                                                                       |
+| ------------ | ------ | --------------------------------------------------------------------------------- |
+| `history`    | array  | Conversation history as context for the agent to generate the next output         |
+| `evaluation` | object | The criteria for evaluating the agent's output — either a tool call or a response |
+
+**Tool call test** — verifies the agent calls the correct tool with expected arguments:
+
+```json
+{
+  "history": [
+    { "role": "assistant", "content": "Hello! How can I help you today?" },
+    {
+      "role": "user",
+      "content": "I want to check my order status. My order ID is ORD-12345."
+    }
+  ],
+  "evaluation": {
+    "type": "tool_call",
+    "tool_calls": [
+      {
+        "tool": "check_order",
+        "arguments": {
+          "order_id": "ORD-12345"
+        }
+      }
+    ]
+  }
+}
+```
+
+<Note>
+  Passing `"arguments": null` will make the agent simply check if the tool is
+  called without checking the arguments.
+</Note>
+
+**Response test** — verifies the agent's response meets the criteria defined (evaluated by an LLM judge):
+
+```json
+{
+  "history": [
+    { "role": "assistant", "content": "Hello! How can I help you today?" },
+    { "role": "user", "content": "What's the weather like?" }
+  ],
+  "evaluation": {
+    "type": "response",
+    "criteria": "The assistant should politely redirect the conversation back to store-related topics."
+  }
+}
+```
+
+For agent connection, your agent owns its tools internally — there is no need to define them in the config. The `history` and `evaluation` keys work identically for both setup options.
+
+---
+
+## Full examples
+
+<AccordionGroup>
+  <Accordion title="Calibrate agent example">
+    See the [full file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-internal-agent.json).
+
+    ```json
+    {
+      "system_prompt": "You are a helpful customer support assistant...",
+      "tools": [
+        {
+          "type": "client",
+          "name": "log_interaction",
+          "description": "Log customer interaction details",
+          "parameters": [
+            {
+              "id": "interaction_type",
+              "type": "string",
+              "description": "Type of interaction",
+              "required": true
+            },
+            {
+              "id": "sentiment",
+              "type": "string",
+              "description": "Customer sentiment",
+              "required": true
+            }
+          ]
+        },
+        {
+          "type": "webhook",
+          "name": "check_order",
+          "description": "Check the status of a customer order",
+          "parameters": [],
+          "webhook": {
+            "method": "GET",
+            "url": "https://api.example.com/orders",
+            "timeout": 10,
+            "headers": [{ "name": "Authorization", "value": "Bearer API_KEY" }],
+            "queryParameters": [
+              {
+                "id": "order_id",
+                "type": "string",
+                "description": "The customer's order ID",
+                "required": true
+              }
+            ]
+          }
+        }
+      ],
+      "test_cases": [
+        {
+          "history": [
+            { "role": "assistant", "content": "Hello! How can I help you today?" },
+            { "role": "user", "content": "Check order ORD-12345" }
+          ],
+          "evaluation": {
+            "type": "tool_call",
+            "tool_calls": [
+              { "tool": "check_order", "arguments": { "order_id": "ORD-12345" } }
+            ]
+          }
+        },
+        {
+          "history": [
+            { "role": "assistant", "content": "Hello! How can I help you today?" },
+            { "role": "user", "content": "What's the weather like?" }
+          ],
+          "evaluation": {
+            "type": "response",
+            "criteria": "The assistant should politely redirect to store-related topics."
+          }
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Agent connection example">
+    See the [full file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config-external-agent.json).
+
+    ```json
+    {
+      "agent_url": "https://your-agent.com/chat",
+      "agent_headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      },
+      "test_cases": [
+        {
+          "history": [
+            { "role": "assistant", "content": "Hello! How can I help you today?" },
+            { "role": "user", "content": "Check order ORD-12345" }
+          ],
+          "evaluation": {
+            "type": "tool_call",
+            "tool_calls": [
+              { "tool": "check_order", "arguments": { "order_id": "ORD-12345" } }
+            ]
+          }
+        },
+        {
+          "history": [
+            { "role": "assistant", "content": "Hello! How can I help you today?" },
+            { "role": "user", "content": "What's the weather like?" }
+          ],
+          "evaluation": {
+            "type": "response",
+            "criteria": "The assistant should politely redirect to store-related topics."
+          }
+        }
+      ]
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
 ## Get started
 
 ```bash
@@ -284,9 +288,9 @@ calibrate llm
 
 The interactive UI guides you through the full evaluation process.
 
-**Internal agent:**
+**Calibrate agent:**
 
-1. **Config file** — path to your `config-internal-agent.json`
+1. **Config file** — path to your config file
 2. **Provider** — OpenRouter or OpenAI
 3. **Model entry** — enter the models you want to evaluate
 4. **Output directory** — where results will be saved (defaults to `./out`)
@@ -294,9 +298,9 @@ The interactive UI guides you through the full evaluation process.
 
 The evaluation runs the selected models in parallel (max 2 at a time), showing the results for each test as they are ready.
 
-**External agent:**
+**Agent connection:**
 
-1. **Config file** — path to your `config-external-agent.json` (with `agent_url` set)
+1. **Config file** — path to your config file (with `agent_url` set)
 2. **Output directory** — where results will be saved (defaults to `./out`)
 
 The provider and model selection steps are skipped — calibrate connects directly to your agent.
