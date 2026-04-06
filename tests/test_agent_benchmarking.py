@@ -275,13 +275,13 @@ class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
         folder = await self._get_folder("gpt-4o")
         self.assertEqual(folder, "gpt-4o")
 
-    async def test_no_model_falls_back_to_external_agent(self):
+    async def test_no_model_saves_directly_to_output_dir(self):
+        """Single agent run with no model should save directly to output_dir, no subfolder."""
         folder = await self._get_folder("")
-        self.assertEqual(folder, "external_agent")
+        self.assertIsNone(folder)
 
     async def test_default_model_string_does_not_leak_into_folder(self):
-        """Ensure the gpt-4.1 default from tests.run() doesn't create a gpt-4.1 folder
-        when running a single agent connection test with no model selected."""
+        """Single agent run with no model saves directly to output_dir — no subfolders created."""
         import os
         import tempfile
         from calibrate.connections import TextAgentConnection
@@ -305,10 +305,11 @@ class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
                     output_dir=tmpdir,
                     # no model/models passed — simulates plain agent connection run
                 )
-            created = [d for d in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, d))]
-            self.assertEqual(len(created), 1)
-            self.assertEqual(created[0], "external_agent")
-            self.assertNotIn("gpt-4.1", created)
+            subfolders = [d for d in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, d))]
+            # No subfolders — results go directly into tmpdir
+            self.assertEqual(subfolders, [])
+            # results.json written directly to output_dir
+            self.assertTrue(os.path.exists(os.path.join(tmpdir, "results.json")))
 
 
 # ---------------------------------------------------------------------------

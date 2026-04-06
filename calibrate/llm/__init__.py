@@ -88,21 +88,23 @@ class _Tests:
         from calibrate.utils import configure_print_logger, log_and_print
 
         # Create output directory
-        if agent is not None:
-            # When benchmarking with agent, use model name as folder so leaderboard works.
-            # Fall back to "external_agent" for plain test runs (no model selected).
-            if model:
-                save_folder_name = model.replace("/", "__")
+        if agent is not None and model:
+            # Benchmarking with agent: use model name as subfolder so leaderboard works.
+            save_folder_name = model.replace("/", "__")
+            if run_name:
+                final_output_dir = os.path.join(output_dir, run_name, save_folder_name)
             else:
-                save_folder_name = "external_agent"
+                final_output_dir = os.path.join(output_dir, save_folder_name)
+        elif agent is not None:
+            # Single agent connection run: save directly to output_dir (no subfolder).
+            final_output_dir = os.path.join(output_dir, run_name) if run_name else output_dir
         else:
             save_folder_name = f"{provider}/{model}" if provider == "openai" else f"{model}"
             save_folder_name = save_folder_name.replace("/", "__")
-
-        if run_name:
-            final_output_dir = os.path.join(output_dir, run_name, save_folder_name)
-        else:
-            final_output_dir = os.path.join(output_dir, save_folder_name)
+            if run_name:
+                final_output_dir = os.path.join(output_dir, run_name, save_folder_name)
+            else:
+                final_output_dir = os.path.join(output_dir, save_folder_name)
 
         os.makedirs(final_output_dir, exist_ok=True)
 
