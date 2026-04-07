@@ -756,9 +756,11 @@ async def main():
     print(f"\033[92mSummary\033[0m")
     print(f"\033[92m{'='*60}\033[0m\n")
 
-    pct = (result["passed"] / result["total"] * 100) if result["total"] > 0 else 0
+    passed = result["metrics"]["passed"]
+    total = result["metrics"]["total"]
+    pct = (passed / total * 100) if total > 0 else 0
     print(
-        f"  {result['provider']}/{result['model']}: {result['passed']}/{result['total']} ({pct:.1f}%)"
+        f"  {result['provider']}/{result['model']}: {passed}/{total} ({pct:.1f}%)"
     )
 
 
