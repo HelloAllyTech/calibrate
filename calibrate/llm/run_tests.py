@@ -495,14 +495,31 @@ async def call_text_agent(
     if model is not None:
         body["model"] = model
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            agent.url,
-            json=body,
-            headers=req_headers,
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                agent.url,
+                json=body,
+                headers=req_headers,
+            )
+    except httpx.ConnectError as e:
+        raise RuntimeError(f"Could not connect to agent at {agent.url}: {e}") from e
+    except httpx.TimeoutException:
+        raise RuntimeError(f"Agent request timed out (60s): {agent.url}") from None
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error calling agent at {agent.url}: {e}") from e
+
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"Agent returned HTTP {resp.status_code}: {resp.text[:500]}"
         )
-        resp.raise_for_status()
+
+    try:
         data = resp.json()
+    except Exception:
+        raise RuntimeError(
+            f"Agent response is not valid JSON: {resp.text[:500]}"
+        ) from None
 
     return {
         "response": data.get("response"),

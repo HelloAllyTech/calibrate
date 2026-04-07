@@ -487,11 +487,13 @@ Examples:
 
                     _lb_dir = os.path.join(args.output_dir, "leaderboard")
                     generate_leaderboard(output_dir=args.output_dir, save_dir=_lb_dir)
-                    print_benchmark_summary(
+                    _has_errors = print_benchmark_summary(
                         models=_models,
                         model_results=_model_results,
                         leaderboard_dir=_lb_dir,
                     )
+                    if _has_errors:
+                        sys.exit(1)
                 else:
                     asyncio.run(
                         _tests.run(
@@ -548,6 +550,26 @@ Examples:
             _launch_ink_ui("simulations")
         elif args.type == "text":
             from calibrate.llm.run_simulation import main as llm_simulation_main
+
+            # Pre-verify agent connection if config has agent_url
+            if args.config:
+                import json as _json
+                with open(args.config) as _f:
+                    _sim_config = _json.load(_f)
+                if _sim_config.get("agent_url"):
+                    from calibrate.connections import TextAgentConnection
+                    _sim_agent = TextAgentConnection(
+                        url=_sim_config["agent_url"],
+                        headers=_sim_config.get("agent_headers"),
+                    )
+                    print(f"\nVerifying agent connection: {_sim_config['agent_url']}")
+                    _verify = asyncio.run(_sim_agent.verify())
+                    if not _verify["ok"]:
+                        print(f"✗ Verification failed: {_verify['error']}")
+                        if "details" in _verify:
+                            print(f"  Details: {_verify['details']}")
+                        sys.exit(1)
+                    print("✓ Verified\n")
 
             sys.argv = ["calibrate"] + _args_to_argv(
                 args, exclude_keys={"component", "sim_subcmd", "type"}

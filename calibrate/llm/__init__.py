@@ -469,14 +469,24 @@ class _Simulations:
         agent_speaks_first: bool,
         max_turns: int,
         agent: Optional["TextAgentConnection"] = None,
+        _flat_output: bool = False,
     ) -> dict:
-        """Run simulations for a single model or external agent."""
+        """Run simulations for a single model or external agent.
+
+        Args:
+            _flat_output: When True, save results directly to output_dir instead of
+                a model-specific subfolder. Used by the single-model path in run()
+                for backward compatibility.
+        """
         from calibrate.llm.run_simulation import run_single_simulation_task
 
-        # Create model-specific output directory
-        save_folder_name = f"{provider}/{model}" if provider == "openai" else f"{model}"
-        save_folder_name = save_folder_name.replace("/", "__")
-        final_output_dir = os.path.join(output_dir, save_folder_name)
+        # Create output directory — flat for single-model runs, model-scoped for benchmarks
+        if _flat_output:
+            final_output_dir = output_dir
+        else:
+            save_folder_name = f"{provider}/{model}" if provider == "openai" else f"{model}"
+            save_folder_name = save_folder_name.replace("/", "__")
+            final_output_dir = os.path.join(output_dir, save_folder_name)
 
         os.makedirs(final_output_dir, exist_ok=True)
 
@@ -690,93 +700,21 @@ class _Simulations:
                 "models": results_by_model,
             }
 
-        # Single model - use original behavior (output directly to output_dir for backward compatibility)
-        from calibrate.llm.run_simulation import run_single_simulation_task
-
-        # Build config dict for run_single_simulation_task
-        config = {
-            "system_prompt": system_prompt,
-            "tools": tools,
-            "personas": personas,
-            "scenarios": scenarios,
-            "evaluation_criteria": evaluation_criteria,
-            "settings": {
-                "agent_speaks_first": agent_speaks_first,
-                "max_turns": max_turns,
-            },
-        }
-
-        # Create a mock args object
-        class Args:
-            pass
-
-        args = Args()
-        args.model = model
-        args.provider = provider
-
-        # Create semaphore for parallel execution
-        sim_semaphore = asyncio.Semaphore(parallel)
-
-        # Create all simulation tasks
-        tasks = []
-        for persona_index, user_persona in enumerate(personas):
-            for scenario_index, scenario in enumerate(scenarios):
-                task = run_single_simulation_task(
-                    semaphore=sim_semaphore,
-                    config=config,
-                    persona_index=persona_index,
-                    user_persona=user_persona,
-                    scenario_index=scenario_index,
-                    scenario=scenario,
-                    output_dir=output_dir,
-                    args=args,
-                    agent=agent,
-                )
-                tasks.append(task)
-
-        # Run all tasks
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Collect metrics
-        metrics_by_criterion = defaultdict(list)
-        all_simulation_metrics = []
-
-        for result in results:
-            if isinstance(result, Exception):
-                continue
-            if result is None:
-                continue
-
-            simulation_metrics, evaluation_results = result
-            if simulation_metrics:
-                all_simulation_metrics.append(simulation_metrics)
-                for eval_result in evaluation_results:
-                    metrics_by_criterion[eval_result["name"]].append(
-                        float(eval_result["value"])
-                    )
-
-        # Compute summary
-        metrics_summary = {}
-        for criterion_name, values in metrics_by_criterion.items():
-            metrics_summary[criterion_name] = {
-                "mean": float(np.mean(values)),
-                "std": float(np.std(values)),
-                "values": values,
-            }
-
-        # Save results
-        if all_simulation_metrics:
-            df = pd.DataFrame(all_simulation_metrics)
-            df.to_csv(os.path.join(output_dir, "results.csv"), index=False)
-
-        with open(os.path.join(output_dir, "metrics.json"), "w") as f:
-            json.dump(metrics_summary, f, indent=4)
-
-        return {
-            "status": "completed",
-            "output_dir": output_dir,
-            "metrics": metrics_summary,
-        }
+        # Single model — save directly to output_dir (no model subfolder) for backward compatibility
+        return await _Simulations._run_single_model(
+            system_prompt=system_prompt,
+            tools=tools,
+            personas=personas,
+            scenarios=scenarios,
+            evaluation_criteria=evaluation_criteria,
+            output_dir=output_dir,
+            model=model,
+            provider=provider,
+            parallel=parallel,
+            agent_speaks_first=agent_speaks_first,
+            max_turns=max_turns,
+            _flat_output=True,
+        )
 
     @staticmethod
     async def run_single(
