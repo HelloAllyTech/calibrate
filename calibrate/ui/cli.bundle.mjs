@@ -48434,6 +48434,7 @@ function SimulationsApp({ onBack }) {
     calibrate: { cmd: "calibrate", args: [] }
   });
   const [existingDirs, setExistingDirs] = (0, import_react24.useState)([]);
+  const [isAgentConnection, setIsAgentConnection] = (0, import_react24.useState)(false);
   const [configInput, setConfigInput] = (0, import_react24.useState)("");
   const [outputInput, setOutputInput] = (0, import_react24.useState)("./out");
   const [parallelInput, setParallelInput] = (0, import_react24.useState)("1");
@@ -48480,7 +48481,7 @@ function SimulationsApp({ onBack }) {
         setStep("output-dir");
         break;
       case "output-dir":
-        if (config.type === "text") {
+        if (config.type === "text" && !isAgentConnection) {
           setStep("enter-model");
         } else {
           setStep("config-path");
@@ -49007,13 +49008,17 @@ function SimulationsApp({ onBack }) {
       return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
         header,
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { dimColor: true, children: "Path to a JSON config file containing system prompt, tools, personas, scenarios, and evaluation criteria." }),
+        initError ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { color: "red", children: initError }) }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Box_default, { marginTop: 1, children: [
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { children: "Config file: " }),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
             TextInput,
             {
               value: configInput,
-              onChange: setConfigInput,
+              onChange: (v) => {
+                setInitError("");
+                setConfigInput(v);
+              },
               onSubmit: (v) => {
                 if (v.trim()) {
                   const resolved = path4.resolve(v.trim());
@@ -49021,8 +49026,24 @@ function SimulationsApp({ onBack }) {
                     setConfigInput("");
                     return;
                   }
+                  let hasAgentUrl = false;
+                  try {
+                    const parsed = JSON.parse(
+                      fs5.readFileSync(resolved, "utf-8")
+                    );
+                    hasAgentUrl = !!parsed.agent_url;
+                  } catch {
+                  }
+                  if (hasAgentUrl && config.type === "voice") {
+                    setConfigInput("");
+                    setInitError(
+                      "Agent connection is not supported for voice simulations. Use a calibrate agent config instead (https://calibrate.artpark.ai/docs/cli/simulations#set-up-your-agent) with the system prompts, tools, etc. defined in the config itself."
+                    );
+                    return;
+                  }
+                  setIsAgentConnection(hasAgentUrl);
                   setConfig((c) => ({ ...c, configPath: resolved }));
-                  if (config.type === "text") {
+                  if (config.type === "text" && !hasAgentUrl) {
                     setStep("provider");
                   } else {
                     setStep("output-dir");

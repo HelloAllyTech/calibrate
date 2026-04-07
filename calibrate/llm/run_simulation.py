@@ -834,6 +834,15 @@ async def main():
     # Create semaphore to limit parallel executions
     semaphore = asyncio.Semaphore(args.parallel)
 
+    # Detect agent connection path
+    agent = None
+    if config.get("agent_url"):
+        from calibrate.connections import TextAgentConnection
+        agent = TextAgentConnection(
+            url=config["agent_url"],
+            headers=config.get("agent_headers"),
+        )
+
     # Create all simulation tasks
     tasks = []
     for persona_index, user_persona in enumerate(config["personas"]):
@@ -847,6 +856,7 @@ async def main():
                 scenario=scenario,
                 output_dir=output_dir,
                 args=args,
+                agent=agent,
             )
             tasks.append(task)
 

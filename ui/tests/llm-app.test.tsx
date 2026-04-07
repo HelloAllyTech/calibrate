@@ -21,7 +21,7 @@ const spawnMock = vi.fn();
 vi.mock("node:fs", () => {
   const existsSyncMock = vi.fn(() => true);
   const readFileSyncMock = vi.fn((_path: string, _enc?: string) =>
-    JSON.stringify({ agent_url: "http://localhost:8080" })
+    JSON.stringify({ agent_url: "http://localhost:8080" }),
   );
   const readdirSyncMock = vi.fn(() => []);
   return {
@@ -73,7 +73,10 @@ function wait(ms = 50): Promise<void> {
 }
 
 /** Type characters one at a time then press Enter */
-async function typeAndSubmit(stdin: { write: (s: string) => void }, text: string) {
+async function typeAndSubmit(
+  stdin: { write: (s: string) => void },
+  text: string,
+) {
   for (const ch of text) {
     stdin.write(ch);
     await wait(10);
@@ -142,7 +145,7 @@ describe("LlmTestsApp", () => {
     it("navigates to agent-mode when config has agent_url", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(
-        JSON.stringify({ agent_url: "http://localhost:8080" })
+        JSON.stringify({ agent_url: "http://localhost:8080" }),
       );
 
       const { stdout, stdin } = await renderAndInit();
@@ -156,7 +159,7 @@ describe("LlmTestsApp", () => {
     it("navigates to provider step when config has no agent_url", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(
-        JSON.stringify({})
+        JSON.stringify({}),
       );
 
       const { stdout, stdin } = await renderAndInit();
@@ -175,7 +178,7 @@ describe("LlmTestsApp", () => {
     async function reachAgentMode() {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://localhost:8080" })
+        JSON.stringify({ agent_url: "http://localhost:8080" }),
       );
 
       const { stdout, stdin } = await renderAndInit();
@@ -217,7 +220,7 @@ describe("LlmTestsApp", () => {
     async function reachModelEntry() {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://localhost:8080" })
+        JSON.stringify({ agent_url: "http://localhost:8080" }),
       );
 
       const { stdout, stdin } = await renderAndInit();
@@ -244,7 +247,7 @@ describe("LlmTestsApp", () => {
     it("code 0 navigates to output-dir after 1s delay", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://localhost:8080" })
+        JSON.stringify({ agent_url: "http://localhost:8080" }),
       );
 
       let capturedProc: ReturnType<typeof makeFakeProc> | null = null;
@@ -282,7 +285,7 @@ describe("LlmTestsApp", () => {
     it("code 0 navigates to agent-model-confirm after 1s delay", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://localhost:8080" })
+        JSON.stringify({ agent_url: "http://localhost:8080" }),
       );
 
       let capturedProc: ReturnType<typeof makeFakeProc> | null = null;
@@ -319,7 +322,7 @@ describe("LlmTestsApp", () => {
     it("non-zero exit stays on verify and shows error", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://localhost:8080" })
+        JSON.stringify({ agent_url: "http://localhost:8080" }),
       );
 
       let capturedProc: ReturnType<typeof makeFakeProc> | null = null;
@@ -351,7 +354,7 @@ describe("LlmTestsApp", () => {
     async function reachModelConfirm() {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://localhost:8080" })
+        JSON.stringify({ agent_url: "http://localhost:8080" }),
       );
 
       let capturedProc: ReturnType<typeof makeFakeProc> | null = null;
@@ -411,7 +414,7 @@ describe("LlmTestsApp", () => {
       const fs = await import("node:fs");
       // existsSync: true for config file, false for output dirs
       (fs.default.existsSync as ReturnType<typeof vi.fn>).mockImplementation(
-        (_p: string) => true
+        (_p: string) => true,
       );
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockImplementation(
         (p: string) => {
@@ -419,7 +422,7 @@ describe("LlmTestsApp", () => {
             return JSON.stringify({ agent_url: "http://localhost:8080" });
           }
           return "";
-        }
+        },
       );
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
@@ -453,7 +456,7 @@ describe("LlmTestsApp", () => {
       // Find the run spawn call (second call)
       const calls = spawnMock.mock.calls;
       const runCall = calls.find(
-        (c) => Array.isArray(c[1]) && c[1].includes("--skip-verify")
+        (c) => Array.isArray(c[1]) && c[1].includes("--skip-verify"),
       );
       return runCall ? (runCall[1] as string[]) : [];
     }
@@ -470,7 +473,7 @@ describe("LlmTestsApp", () => {
     async function getBenchmarkAgentSpawnArgs(): Promise<string[]> {
       const fs = await import("node:fs");
       (fs.default.existsSync as ReturnType<typeof vi.fn>).mockImplementation(
-        () => true
+        () => true,
       );
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockImplementation(
         (p: string) => {
@@ -478,7 +481,7 @@ describe("LlmTestsApp", () => {
             return JSON.stringify({ agent_url: "http://localhost:8080" });
           }
           return "";
-        }
+        },
       );
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
@@ -516,7 +519,10 @@ describe("LlmTestsApp", () => {
 
       const calls = spawnMock.mock.calls;
       const runCall = calls.find(
-        (c) => Array.isArray(c[1]) && c[1].includes("--skip-verify") && c[1].includes("-m")
+        (c) =>
+          Array.isArray(c[1]) &&
+          c[1].includes("--skip-verify") &&
+          c[1].includes("-m"),
       );
       return runCall ? (runCall[1] as string[]) : [];
     }
@@ -534,7 +540,7 @@ describe("LlmTestsApp", () => {
     async function getInternalModelSpawnArgs(): Promise<string[]> {
       const fs = await import("node:fs");
       (fs.default.existsSync as ReturnType<typeof vi.fn>).mockImplementation(
-        () => true
+        () => true,
       );
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockImplementation(
         (p: string) => {
@@ -543,7 +549,7 @@ describe("LlmTestsApp", () => {
             return JSON.stringify({});
           }
           return "";
-        }
+        },
       );
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
@@ -572,12 +578,13 @@ describe("LlmTestsApp", () => {
       const calls = spawnMock.mock.calls;
       // Find the call that has -m and -p (internal model run)
       const runCall = calls.find(
-        (c) => Array.isArray(c[1]) && c[1].includes("-m") && c[1].includes("-p")
+        (c) =>
+          Array.isArray(c[1]) && c[1].includes("-m") && c[1].includes("-p"),
       );
       return runCall ? (runCall[1] as string[]) : [];
     }
 
-    it("internal model run (gpt-4.1, openrouter): args contain -m gpt-4.1 -p openrouter, no --skip-verify", async () => {
+    it("internal model run (gpt-4.1, openrouter): args contain -m openai/gpt-4.1 -p openrouter, no --skip-verify", async () => {
       const args = await getInternalModelSpawnArgs();
       expect(args).toContain("-m");
       expect(args).toContain("gpt-4.1");
@@ -595,7 +602,7 @@ describe("LlmTestsApp", () => {
     async function reachProvider() {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({}) // no agent_url → internal path
+        JSON.stringify({}), // no agent_url → internal path
       );
       const { stdout, stdin } = await renderAndInit();
       await typeAndSubmit(stdin, "./config.json"); // → provider
@@ -646,10 +653,12 @@ describe("LlmTestsApp", () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   describe("internal model flow — enter-model step", () => {
-    async function reachEnterModel(provider: "openrouter" | "openai" = "openrouter") {
+    async function reachEnterModel(
+      provider: "openrouter" | "openai" = "openrouter",
+    ) {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({})
+        JSON.stringify({}),
       );
       const { stdout, stdin } = await renderAndInit();
       await typeAndSubmit(stdin, "./config.json"); // → provider
@@ -706,7 +715,7 @@ describe("LlmTestsApp", () => {
     async function reachModelConfirmInternal() {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({})
+        JSON.stringify({}),
       );
       const { stdout, stdin } = await renderAndInit();
       await typeAndSubmit(stdin, "./config.json"); // → provider
@@ -742,7 +751,7 @@ describe("LlmTestsApp", () => {
     async function reachOutputDirViaSingle() {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
@@ -772,7 +781,9 @@ describe("LlmTestsApp", () => {
 
     it("submitting goes to running when api keys present", async () => {
       const credentials = await import("../source/credentials.js");
-      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue("sk-key");
+      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue(
+        "sk-key",
+      );
 
       const { stdout, stdin } = await reachOutputDirViaSingle();
       await pressEnter(stdin); // submit default dir
@@ -785,7 +796,9 @@ describe("LlmTestsApp", () => {
 
     it("submitting goes to api-keys when keys missing", async () => {
       const credentials = await import("../source/credentials.js");
-      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue(null);
+      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue(
+        null,
+      );
 
       const { stdout, stdin } = await reachOutputDirViaSingle();
       await pressEnter(stdin);
@@ -799,10 +812,12 @@ describe("LlmTestsApp", () => {
       const fs = await import("node:fs");
       const credentials = await import("../source/credentials.js");
       // Ensure credentials are present so we don't go to api-keys
-      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue("sk-key");
+      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue(
+        "sk-key",
+      );
 
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       (fs.default.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
       // Make readdirSync return entries indicating existing data
@@ -810,7 +825,7 @@ describe("LlmTestsApp", () => {
         (p: unknown, _opts?: unknown) => {
           // For the inner dir (content check): return something non-empty
           return ["results.json"];
-        }
+        },
       );
 
       let capturedProc: ReturnType<typeof makeFakeProc> | null = null;
@@ -837,7 +852,7 @@ describe("LlmTestsApp", () => {
             return [{ name: "model1", isDirectory: () => true }];
           }
           return ["results.json"];
-        }
+        },
       );
 
       await pressEnter(stdin); // submit default dir "./out"
@@ -855,11 +870,13 @@ describe("LlmTestsApp", () => {
   describe("shared steps — api-keys step", () => {
     async function reachApiKeys() {
       const credentials = await import("../source/credentials.js");
-      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue(null);
+      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue(
+        null,
+      );
 
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
@@ -903,11 +920,13 @@ describe("LlmTestsApp", () => {
     it("entering first of two keys advances to second key", async () => {
       const credentials = await import("../source/credentials.js");
       // Both keys missing — first call returns null, second also null
-      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue(null);
+      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue(
+        null,
+      );
 
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({}) // internal path → needs both OPENAI and OPENROUTER keys
+        JSON.stringify({}), // internal path → needs both OPENAI and OPENROUTER keys
       );
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
@@ -944,7 +963,7 @@ describe("LlmTestsApp", () => {
     it("Esc from provider goes to config-path", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({})
+        JSON.stringify({}),
       );
       const { stdout, stdin } = await renderAndInit();
       await typeAndSubmit(stdin, "./config.json"); // → provider
@@ -955,7 +974,7 @@ describe("LlmTestsApp", () => {
     it("Esc from enter-model goes to provider", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({})
+        JSON.stringify({}),
       );
       const { stdout, stdin } = await renderAndInit();
       await typeAndSubmit(stdin, "./config.json"); // → provider
@@ -968,7 +987,7 @@ describe("LlmTestsApp", () => {
     it("Esc from model-confirm goes to enter-model", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({})
+        JSON.stringify({}),
       );
       const { stdout, stdin } = await renderAndInit();
       await typeAndSubmit(stdin, "./config.json"); // → provider
@@ -982,7 +1001,7 @@ describe("LlmTestsApp", () => {
     it("Esc from agent-mode goes to config-path", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       const { stdout, stdin } = await renderAndInit();
       await typeAndSubmit(stdin, "./config.json"); // → agent-mode
@@ -993,7 +1012,7 @@ describe("LlmTestsApp", () => {
     it("Esc from agent-model-entry with no models goes to agent-mode", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       const { stdout, stdin } = await renderAndInit();
       await typeAndSubmit(stdin, "./config.json"); // → agent-mode
@@ -1006,7 +1025,7 @@ describe("LlmTestsApp", () => {
     it("Esc from agent-model-entry with models goes to agent-model-confirm", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
 
       let capturedProc: ReturnType<typeof makeFakeProc> | null = null;
@@ -1038,7 +1057,7 @@ describe("LlmTestsApp", () => {
     it("Esc from agent-verify single goes to agent-mode", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       spawnMock.mockImplementation(() => makeFakeProc());
 
@@ -1053,7 +1072,7 @@ describe("LlmTestsApp", () => {
     it("Esc from agent-verify benchmark removes last model and goes to agent-model-entry", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       spawnMock.mockImplementation(() => makeFakeProc());
 
@@ -1075,7 +1094,7 @@ describe("LlmTestsApp", () => {
     it("Esc from output-dir agent single goes to agent-verify", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
@@ -1103,7 +1122,7 @@ describe("LlmTestsApp", () => {
     it("Esc from output-dir agent benchmark goes to agent-model-confirm", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
@@ -1138,7 +1157,7 @@ describe("LlmTestsApp", () => {
     it("Esc from output-dir internal goes to model-confirm", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({})
+        JSON.stringify({}),
       );
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
@@ -1159,7 +1178,7 @@ describe("LlmTestsApp", () => {
     it("Esc from output-dir-confirm goes to output-dir", async () => {
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       // Make readdirSync return existing dirs for output-dir-confirm trigger
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockImplementation(
@@ -1168,7 +1187,7 @@ describe("LlmTestsApp", () => {
             return [{ name: "model1", isDirectory: () => true }];
           }
           return ["results.json"];
-        }
+        },
       );
       (fs.default.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
 
@@ -1199,11 +1218,13 @@ describe("LlmTestsApp", () => {
 
     it("Esc from api-keys goes to output-dir", async () => {
       const credentials = await import("../source/credentials.js");
-      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue(null);
+      (credentials.getCredential as ReturnType<typeof vi.fn>).mockReturnValue(
+        null,
+      );
 
       const fs = await import("node:fs");
       (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ agent_url: "http://fake-agent/chat" })
+        JSON.stringify({ agent_url: "http://fake-agent/chat" }),
       );
       (fs.default.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue([]);
 

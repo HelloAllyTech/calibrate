@@ -344,13 +344,13 @@ Pass a config file directly to skip the UI.
 Single model:
 
 ```bash
-calibrate llm -c config.json -m gpt-4.1 -p openrouter -o ./out
+calibrate llm -c config.json -m openai/gpt-4.1 -p openrouter -o ./out
 ```
 
 Multiple models (benchmark — runs in parallel, generates a leaderboard):
 
 ```bash
-calibrate llm -c config.json -m gpt-4.1 claude-sonnet-4-5 -p openrouter -o ./out
+calibrate llm -c config.json -m openai/gpt-4.1 claude-sonnet-4-5 -p openrouter -o ./out
 ```
 
 **Agent connection:**

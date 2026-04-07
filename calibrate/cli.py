@@ -11,8 +11,8 @@ Usage:
     calibrate status                                  # Check provider connectivity
 
     # Direct mode:
-    calibrate llm -c config.json -m gpt-4.1 -p openrouter -o ./out
-    calibrate simulations --type text -c config.json -m gpt-4.1 -p openrouter -o ./out
+    calibrate llm -c config.json -m openai/gpt-4.1 -p openrouter -o ./out
+    calibrate simulations --type text -c config.json -m openai/gpt-4.1 -p openrouter -o ./out
     calibrate simulations --type voice -c config.json -o ./out
 """
 
@@ -107,8 +107,11 @@ def _run_agent_verify(
     # If models provided, send the first model name in the verify request
     model_hint: str | None = models[0] if models else None
 
-    body_preview = '{"messages": [...], "model": "' + model_hint + '"}' \
-        if model_hint else '{"messages": [{"role": "user", "content": "Hi"}]}'
+    body_preview = (
+        '{"messages": [...], "model": "' + model_hint + '"}'
+        if model_hint
+        else '{"messages": [{"role": "user", "content": "Hi"}]}'
+    )
 
     print(f"\nVerifying agent connection: {agent_url}")
     print(f"Sending: {body_preview}")
@@ -433,6 +436,7 @@ Examples:
         else:
             # Direct mode: run tests with provided config
             import json as _json
+
             with open(args.config) as _f:
                 _config = _json.load(_f)
 
@@ -471,12 +475,14 @@ Examples:
                         print(f"\n\033[92m{'='*60}\033[0m")
                         print(f"\033[92m  Model: {_m}\033[0m")
                         print(f"\033[92m{'='*60}\033[0m\n")
-                        _result = asyncio.run(_tests.run(
-                            agent=_agent,
-                            test_cases=_config["test_cases"],
-                            output_dir=args.output_dir,
-                            models=[_m],
-                        ))
+                        _result = asyncio.run(
+                            _tests.run(
+                                agent=_agent,
+                                test_cases=_config["test_cases"],
+                                output_dir=args.output_dir,
+                                models=[_m],
+                            )
+                        )
                         _model_results[_m] = _result.get(_m, _result)
 
                     _lb_dir = os.path.join(args.output_dir, "leaderboard")
@@ -487,11 +493,13 @@ Examples:
                         leaderboard_dir=_lb_dir,
                     )
                 else:
-                    asyncio.run(_tests.run(
-                        agent=_agent,
-                        test_cases=_config["test_cases"],
-                        output_dir=args.output_dir,
-                    ))
+                    asyncio.run(
+                        _tests.run(
+                            agent=_agent,
+                            test_cases=_config["test_cases"],
+                            output_dir=args.output_dir,
+                        )
+                    )
             else:
                 from calibrate.llm.benchmark import main as llm_benchmark_main
 
