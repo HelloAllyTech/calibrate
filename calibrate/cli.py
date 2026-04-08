@@ -300,7 +300,7 @@ Examples:
         "-m",
         "--model",
         type=str,
-        default="gpt-4.1",
+        default=None,
         help="Model name (text simulations)",
     )
     sim_parser.add_argument(
