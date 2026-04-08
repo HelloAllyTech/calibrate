@@ -86,6 +86,21 @@ def _launch_ink_ui(mode: str):
     sys.exit(result.returncode)
 
 
+def _print_sample_output(result: dict) -> None:
+    """Print sample_output from a verify result, if present."""
+    sample = result.get("sample_output")
+    if sample is None:
+        return
+    print("\n  Sample output received from agent:")
+    if isinstance(sample, dict):
+        if sample.get("response") is not None:
+            print(f"  response: {sample['response']}")
+        if sample.get("tool_calls"):
+            print(f"  tool_calls: {json.dumps(sample['tool_calls'], indent=2)}")
+    else:
+        print(f"  {sample}")
+
+
 def _run_agent_verify(
     agent_url: str,
     agent_headers_raw: str | None,
@@ -121,10 +136,10 @@ def _run_agent_verify(
 
     if result["ok"]:
         print("✓ Connection verified — response format is correct")
+        _print_sample_output(result)
     else:
         print(f"✗ Verification failed: {result['error']}")
-        if "details" in result:
-            print(f"  Details: {result['details']}")
+        _print_sample_output(result)
         sys.exit(1)
 
 
@@ -465,10 +480,11 @@ Examples:
                         _verify_result = asyncio.run(_agent.verify(model=_m))
                         if not _verify_result["ok"]:
                             print(f"✗ Verification failed: {_verify_result['error']}")
-                            if "details" in _verify_result:
-                                print(f"  Details: {_verify_result['details']}")
+                            _print_sample_output(_verify_result)
                             sys.exit(1)
-                        print(f"✓ Verified\n")
+                        print(f"✓ Verified")
+                        _print_sample_output(_verify_result)
+                        print()
 
                 from calibrate.llm.tests_leaderboard import generate_leaderboard
                 from calibrate.llm._output import print_benchmark_summary
@@ -572,10 +588,11 @@ Examples:
                     _verify = asyncio.run(_sim_agent.verify())
                     if not _verify["ok"]:
                         print(f"✗ Verification failed: {_verify['error']}")
-                        if "details" in _verify:
-                            print(f"  Details: {_verify['details']}")
+                        _print_sample_output(_verify)
                         sys.exit(1)
-                    print("✓ Verified\n")
+                    print("✓ Verified")
+                    _print_sample_output(_verify)
+                    print()
 
             sys.argv = ["calibrate"] + _args_to_argv(
                 args, exclude_keys={"component", "sim_subcmd", "type"}

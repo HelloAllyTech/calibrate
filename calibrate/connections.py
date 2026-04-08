@@ -94,8 +94,11 @@ class TextAgentConnection:
                 benchmark mode, e.g. ``"gemma-4-26b-a4b-it"``).
 
         Returns:
-            ``{"ok": True}`` on success, or
-            ``{"ok": False, "error": "<reason>", "details": ...}`` on failure.
+            ``{"ok": True, "sample_output": {"response": "...", "tool_calls": [...]}}``
+            on success, or
+            ``{"ok": False, "error": "<reason>", "sample_output": ...}`` on failure.
+            ``sample_output`` contains whatever the agent returned (may be absent
+            if the request never completed).
 
         Example:
             >>> result = asyncio.run(agent.verify())
@@ -124,18 +127,17 @@ class TextAgentConnection:
                     headers=req_headers,
                 )
         except httpx.ConnectError as e:
-            return {"ok": False, "error": "Could not connect to endpoint", "details": str(e)}
+            return {"ok": False, "error": f"Could not connect to endpoint: {e}"}
         except httpx.TimeoutException:
             return {"ok": False, "error": "Request timed out (30s)"}
         except Exception as e:
-            return {"ok": False, "error": "Unexpected error during request", "details": str(e)}
+            return {"ok": False, "error": f"Unexpected error during request: {e}"}
 
         # ── 2. HTTP status ────────────────────────────────────────────────
         if resp.status_code != 200:
             return {
                 "ok": False,
                 "error": f"Endpoint returned HTTP {resp.status_code}",
-                "details": resp.text[:500],
             }
 
         # ── 3. Valid JSON ─────────────────────────────────────────────────
@@ -145,13 +147,13 @@ class TextAgentConnection:
             return {
                 "ok": False,
                 "error": "Response is not valid JSON",
-                "details": resp.text[:500],
             }
 
         if not isinstance(data, dict):
             return {
                 "ok": False,
                 "error": f"Response must be a JSON object, got {type(data).__name__}",
+                "sample_output": data,
             }
 
         # ── 4. At least one expected key ──────────────────────────────────
@@ -162,7 +164,7 @@ class TextAgentConnection:
             return {
                 "ok": False,
                 "error": 'Response JSON must contain "response" and/or "tool_calls"',
-                "details": f"Got keys: {list(data.keys())}",
+                "sample_output": data,
             }
 
         # ── 5. Type checks ────────────────────────────────────────────────
@@ -171,6 +173,7 @@ class TextAgentConnection:
                 return {
                     "ok": False,
                     "error": f'"response" must be a string or null, got {type(data["response"]).__name__}',
+                    "sample_output": data,
                 }
 
         if has_tool_calls:
@@ -178,32 +181,41 @@ class TextAgentConnection:
                 return {
                     "ok": False,
                     "error": f'"tool_calls" must be a list, got {type(data["tool_calls"]).__name__}',
+                    "sample_output": data,
                 }
             for i, tc in enumerate(data["tool_calls"]):
                 if not isinstance(tc, dict):
                     return {
                         "ok": False,
                         "error": f'"tool_calls[{i}]" must be an object, got {type(tc).__name__}',
+                        "sample_output": data,
                     }
                 if "tool" not in tc:
                     return {
                         "ok": False,
                         "error": f'"tool_calls[{i}]" is missing required key "tool"',
-                        "details": tc,
+                        "sample_output": data,
                     }
                 if "arguments" not in tc:
                     return {
                         "ok": False,
                         "error": f'"tool_calls[{i}]" is missing required key "arguments"',
-                        "details": tc,
+                        "sample_output": data,
                     }
                 if not isinstance(tc["arguments"], dict):
                     return {
                         "ok": False,
                         "error": f'"tool_calls[{i}].arguments" must be an object, got {type(tc["arguments"]).__name__}',
+                        "sample_output": data,
                     }
 
-        return {"ok": True}
+        return {
+            "ok": True,
+            "sample_output": {
+                "response": data.get("response"),
+                "tool_calls": data.get("tool_calls", []),
+            },
+        }
 
     async def call(
         self,

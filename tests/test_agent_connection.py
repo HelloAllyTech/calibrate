@@ -253,6 +253,8 @@ class TestTextAgentConnectionVerify(unittest.IsolatedAsyncioTestCase):
             result = await agent.verify()
 
         self.assertTrue(result["ok"])
+        self.assertEqual(result["sample_output"]["response"], "Hi! I'm your assistant.")
+        self.assertEqual(result["sample_output"]["tool_calls"], [])
 
     async def test_verify_passes_tool_calls_only(self):
         from calibrate.connections import TextAgentConnection
@@ -263,6 +265,8 @@ class TestTextAgentConnectionVerify(unittest.IsolatedAsyncioTestCase):
             result = await agent.verify()
 
         self.assertTrue(result["ok"])
+        self.assertIsNone(result["sample_output"]["response"])
+        self.assertEqual(result["sample_output"]["tool_calls"], [{"tool": "fn", "arguments": {}}])
 
     async def test_verify_fails_empty_response(self):
         from calibrate.connections import TextAgentConnection
