@@ -335,6 +335,11 @@ Examples:
         default=None,
         help='HTTP headers for the agent as a JSON string, e.g. \'{"Authorization": "Bearer sk-..."}\'',
     )
+    sim_parser.add_argument(
+        "--skip-verify",
+        action="store_true",
+        help="Skip agent connection verification (used internally when already verified)",
+    )
 
     # Hidden internal subcommand for simulation leaderboard
     sim_subparsers = sim_parser.add_subparsers(dest="sim_subcmd", metavar="")
@@ -557,7 +562,7 @@ Examples:
                 import json as _json
                 with open(args.config) as _f:
                     _sim_config = _json.load(_f)
-                if _sim_config.get("agent_url"):
+                if _sim_config.get("agent_url") and not getattr(args, "skip_verify", False):
                     from calibrate.connections import TextAgentConnection
                     _sim_agent = TextAgentConnection(
                         url=_sim_config["agent_url"],
