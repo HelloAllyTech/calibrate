@@ -11,37 +11,21 @@ description: "Run simulated conversations to test your agent end-to-end"
   allowFullScreen
 ></iframe>
 
-## Configuration
+## Set up your agent
 
-You need to create a config file that defines the following:
+There are two ways to run simulations:
 
-- Instructions for your agent (system prompt)
-- Tools available to your agent
-- Personas that simulate different user types
-- Scenarios that define conversation patterns
-- Evaluation criteria to measure agent performance
-- The STT, TTS, and LLM providers to use (for voice simulations only)
+- **Calibrate agent** — define your agent's system prompt and tools directly in the config file. Works for both text and voice simulations.
+- **Agent connection** — point calibrate at your existing agent's HTTP endpoint. The user simulator sends messages to it and evaluates the full conversation.
 
-This section explains the different keys in the config file.
+<Note>
+  Agent connection is only supported for text simulations. Voice simulations are
+  currently only supported through Calibrate agents.
+</Note>
 
-### `system_prompt`
+For the full setup details, see [Set up your agent](/cli/text-to-text#set-up-your-agent).
 
-The system prompt that defines your agent's behavior. This is the same prompt you use in production.
-
-```
-You are a helpful customer support assistant for an online store.
-
-You help customers with:
-1. Checking order status
-2. Processing returns
-3. Answering product questions
-```
-
-### `tools`
-
-A list of tools available to your agent. See the guide on [Configuring Tools](/guides/configuring-tools) for how to set it up along with examples for different tool types.
-
-### `personas`
+## Personas
 
 An array of user personas that simulate different types of users interacting with your agent. For a primer on personas, refer to [Personas](/core-concepts/personas). Each persona has:
 
@@ -52,8 +36,6 @@ An array of user personas that simulate different types of users interacting wit
 | `gender`                   | string | Gender for voice simulations: `male` or `female`                                                                                   |
 | `language`                 | string | Language the persona speaks: `english`, `hindi`, or `kannada` (more coming soon)                                                   |
 | `interruption_sensitivity` | string | (Voice only) How likely the persona is to interrupt the agent mid-sentence: `none` (0%), `low` (25%), `medium` (50%), `high` (80%) |
-
-**Example:**
 
 ```json
 {
@@ -74,7 +56,7 @@ An array of user personas that simulate different types of users interacting wit
 }
 ```
 
-### `scenarios`
+## Scenarios
 
 An array of scenarios that define different conversation patterns to test. For a primer on scenarios, refer to [Scenarios](/core-concepts/scenarios). Each scenario has:
 
@@ -82,8 +64,6 @@ An array of scenarios that define different conversation patterns to test. For a
 | ------------- | ------ | ------------------------------------------------------ |
 | `name`        | string | A short name for the scenario                          |
 | `description` | string | Instructions for **what** the simulated user should do |
-
-**Example:**
 
 ```json
 {
@@ -100,16 +80,14 @@ An array of scenarios that define different conversation patterns to test. For a
 }
 ```
 
-### `evaluation_criteria`
+## Evaluation criteria
 
-An array of criteria used to evaluate the agent's performance. Each criterion has:
+An array of LLM judges used to evaluate the agent's performance. Each LLM judge has:
 
-| Key           | Type   | Description                                         |
-| ------------- | ------ | --------------------------------------------------- |
-| `name`        | string | A short name for the criterion (used in results)    |
-| `description` | string | What the criterion measures (used by the LLM judge) |
-
-**Example:**
+| Key           | Type   | Description                                               |
+| ------------- | ------ | --------------------------------------------------------- |
+| `name`        | string | A short name (used in results)                            |
+| `description` | string | Instructions on how to measure it (used by the LLM judge) |
 
 ```json
 {
@@ -126,16 +104,25 @@ An array of criteria used to evaluate the agent's performance. Each criterion ha
 }
 ```
 
-### `settings`
+## Settings
 
 Optional settings to control the simulation:
 
-| Key                  | Type    | Description                                                                                                |
-| -------------------- | ------- | ---------------------------------------------------------------------------------------------------------- |
-| `agent_speaks_first` | boolean | Whether the agent initiates the conversation (default: `true`)                                             |
-| `max_turns`          | number  | Maximum number of agent messages after which the simulated conversation ends automatically (default: `10`) |
+| Key                  | Type    | Description                                                                                                          |
+| -------------------- | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| `agent_speaks_first` | boolean | Whether the agent initiates the conversation (default: `true`)                                                       |
+| `max_turns`          | number  | Maximum number of agent turns after which the simulation ends automatically (default: `50` for text, `10` for voice) |
 
-### `stt`, `llm`, and `tts` (voice simulations only)
+```json
+{
+  "settings": {
+    "agent_speaks_first": true,
+    "max_turns": 5
+  }
+}
+```
+
+## STT, LLM, and TTS (voice simulations only)
 
 For voice simulations, specify the STT, LLM, and TTS providers:
 
@@ -154,27 +141,149 @@ For voice simulations, specify the STT, LLM, and TTS providers:
 }
 ```
 
-### Full example
+## Full examples
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/agent/simulation/sample_text.json) for a text simulation and [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/agent/simulation/sample_voice.json) for a voice simulation.
+<AccordionGroup>
+  <Accordion title="Calibrate agent example">
+    See the [full text simulation file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/agent/simulation/sample_text_internal_agent.json) and the [full voice simulation file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/agent/simulation/sample_voice.json).
+
+    ```json
+    {
+      "system_prompt": "You are a helpful customer support assistant...",
+      "tools": [...],
+      "personas": [
+        {
+          "label": "friendly customer",
+          "characteristics": "You are a friendly customer who wants to check your order status. Your order ID is ORD-12345. You are polite and patient.",
+          "gender": "neutral",
+          "language": "english"
+        }
+      ],
+      "scenarios": [
+        {
+          "name": "simple order inquiry",
+          "description": "Ask about your order status directly and provide your order ID right away."
+        }
+      ],
+      "evaluation_criteria": [
+        {
+          "name": "tool_usage",
+          "description": "The agent should call the log_inquiry tool with the correct inquiry_type and order_id when provided by the customer."
+        }
+      ],
+      "settings": {
+        "agent_speaks_first": true,
+        "max_turns": 5
+      }
+    }
+    ```
+
+  </Accordion>
+
+  <Accordion title="Agent connection example">
+    See the [full file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/agent/simulation/sample_text_agent_connection.json).
+
+    ```json
+    {
+      "agent_url": "https://your-agent.com/chat",
+      "agent_headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      },
+      "personas": [
+        {
+          "label": "friendly customer",
+          "characteristics": "You are a friendly customer who wants to check your order status. Your order ID is ORD-12345. You are polite and patient.",
+          "gender": "neutral",
+          "language": "english"
+        }
+      ],
+      "scenarios": [
+        {
+          "name": "simple order inquiry",
+          "description": "Ask about your order status directly and provide your order ID right away."
+        }
+      ],
+      "evaluation_criteria": [
+        {
+          "name": "order_resolved",
+          "description": "The agent should look up and clearly communicate the order status to the customer."
+        }
+      ],
+      "settings": {
+        "agent_speaks_first": true,
+        "max_turns": 5
+      }
+    }
+    ```
+
+  </Accordion>
+</AccordionGroup>
 
 ## Get started
+
+### Interactive mode
+
+Run `calibrate simulations` with no arguments to launch the interactive UI:
 
 ```bash
 calibrate simulations
 ```
 
-The interactive UI guides you through the full simulation process:
+**Calibrate agent (text):**
 
-1. **Simulation type** — text (LLM-only) or voice (full STT → LLM → TTS pipeline)
-2. **Config file** — path to the config file you created in the [previous](#configuration) section
-3. **Provider** — OpenRouter or OpenAI (text simulations only)
-4. **Model** — enter the model you want to use for the simulation (text simulations only)
-5. **Parallel count** — run multiple simulations simultaneously (default: `1`)
+1. **Simulation type** — select "Text"
+2. **Config file** — path to your config file
+3. **Provider** — OpenRouter or OpenAI
+4. **Model** — the model used for both the agent and user simulator
+5. **Parallel count** — how many simulations to run simultaneously (default: `1`)
 6. **Output directory** — where results will be saved (defaults to `./out`)
-7. **API keys** — enter the API keys for the selected providers
+7. **API keys** — enter the API keys for the selected provider
 
-Simulated conversations are run for all persona × scenario combinations. For example, with 2 personas and 2 scenarios, you get 4 simulations.
+**Calibrate agent (voice):**
+
+1. **Simulation type** — select "Voice"
+2. **Config file** — path to your config file (with `stt`, `tts`, and `llm` set)
+3. **Parallel count** — how many simulations to run simultaneously (default: `1`)
+4. **Output directory** — where results will be saved (defaults to `./out`)
+5. **API keys** — enter the API keys for the selected providers
+
+**Agent connection (text only):**
+
+1. **Simulation type** — select "Text"
+2. **Config file** — path to your config file (with `agent_url` and optionally `agent_headers`)
+3. **Parallel count** — how many simulations to run simultaneously (default: `1`)
+4. **Output directory** — where results will be saved (defaults to `./out`)
+5. **API keys** — only `OPENAI_API_KEY` is required (used by the user simulator and LLM judge)
+
+### Non-interactive mode
+
+Pass `--type text` or `--type voice` and a config file directly to skip the UI.
+
+**Calibrate agent (text):**
+
+```bash
+calibrate simulations --type text -c config.json -m openai/gpt-4.1 -p openrouter -o ./out
+```
+
+**Calibrate agent (voice):**
+
+```bash
+calibrate simulations --type voice -c config.json -o ./out
+```
+
+**Agent connection (text only):**
+
+```bash
+calibrate simulations --type text -c config.json -o ./out
+```
+
+Run multiple simulations in parallel with `-n`:
+
+```bash
+calibrate simulations --type text -c config.json -o ./out -n 2
+```
+
+Simulations run for every persona × scenario combination. For example, 2 personas × 2 scenarios = 4 simulations.
 
 ## Output
 

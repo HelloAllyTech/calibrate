@@ -1,0 +1,44 @@
+{
+  "agent_url": "https://your-agent.com/chat",
+  "agent_headers": {
+    "Authorization": "Bearer YOUR_API_KEY"
+  },
+  "personas": [
+    {
+      "label": "friendly customer",
+      "characteristics": "You are a friendly customer who wants to check your order status. Your order ID is ORD-12345. You are polite and patient.",
+      "gender": "neutral",
+      "language": "english"
+    },
+    {
+      "label": "impatient customer",
+      "characteristics": "You are an impatient customer who has been waiting a long time for your order. Your order ID is ORD-67890. You are frustrated but not rude.",
+      "gender": "neutral",
+      "language": "english"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "simple order inquiry",
+      "description": "Ask about your order status directly and provide your order ID right away."
+    },
+    {
+      "name": "vague inquiry",
+      "description": "Start by asking about your order without providing the order ID. Only provide it after being asked."
+    }
+  ],
+  "evaluation_criteria": [
+    {
+      "name": "order_resolved",
+      "description": "The agent should look up and clearly communicate the order status to the customer."
+    },
+    {
+      "name": "response_quality",
+      "description": "The agent should be helpful, polite, and guide the customer through the process."
+    }
+  ],
+  "settings": {
+    "agent_speaks_first": true,
+    "max_turns": 5
+  }
+}

@@ -11,17 +11,20 @@ description: "Create edge cases to test the LLM powering your agent"
   allowFullScreen
 ></iframe>
 
-## Configuration
+## Set up your agent
 
-You need to create a config file that defines the following:
+There are two ways to run LLM evaluations:
 
-- Instructions for your agent
-- Tools available to your agent
-- Test cases to evaluate your agent on
+- **Calibrate agent** — define your agent inside the config file and evaluate across models.
+- **Agent connection** — connect your existing agent via HTTP and run tests against it directly.
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/tree/main/examples/llm/config.json) for a template. This section explains the different keys in the config file.
+### Calibrate agent
 
-### `system_prompt`
+Define your agent's system prompt and tools directly in the config file. Calibrate runs the evaluation using an LLM of your choice.
+
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-internal-agent.json) for a full template.
+
+#### `system_prompt`
 
 The system prompt that defines your agent's behavior. This is the same prompt you use in production.
 
@@ -34,20 +37,96 @@ You help customers with:
 3. Answering product questions
 ```
 
-### `tools`
+#### `tools`
 
 A list of tools available to your agent. See the guide on [Configuring Tools](/guides/configuring-tools) for how to set it up along with examples for different tool types.
 
-### `test_cases`
+### Agent connection
 
-An array of test cases. These are the scenarios you want to evaluate your agent on. Each test case has:
+If you already have an agent running, you can connect calibrate directly to it instead of redefining your agent's system prompt and tools.
+
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-external-agent.json) for a full template.
+
+#### Connect your agent
+
+| Key             | Required | Description                                                 |
+| --------------- | -------- | ----------------------------------------------------------- |
+| `agent_url`     | Yes      | The URL calibrate will make a POST request to               |
+| `agent_headers` | No       | HTTP headers included in every request — typically for auth |
+
+```json
+{
+  "agent_url": "https://your-agent.com/chat",
+  "agent_headers": {
+    "Authorization": "Bearer YOUR_API_KEY"
+  }
+}
+```
+
+#### Request format
+
+Calibrate will make a POST request to your `agent_url` with the following body:
+
+```json
+{
+  "messages": [
+    { "role": "assistant", "content": "Hello! How can I help you?" },
+    { "role": "user", "content": "Check order ORD-12345" }
+  ]
+}
+```
+
+When benchmarking across models, a `model` field is added so your agent can route to the right model:
+
+```json
+{
+  "messages": [...],
+  "model": "gemma-4-26b-a4b-it"
+}
+```
+
+To enable benchmarking multiple models, your API must support the `model` field and you must implement the model routing in your agent. The easiest way is to use an existing framework like `OpenRouter` and select among a wide range of models.
+
+#### Response format
+
+Your agent must return a JSON response with at least one of these keys:
+
+| Key          | Type           | Description                  |
+| ------------ | -------------- | ---------------------------- |
+| `response`   | string or null | The agent's text reply       |
+| `tool_calls` | array          | Tool calls made by the agent |
+
+Each item in `tool_calls` must have:
+
+```json
+{
+  "tool": "function_name",
+  "arguments": { "key": "value" }
+}
+```
+
+#### Verify your connection
+
+Before running evaluations, you can verify that your agent endpoint is reachable and returns the expected format:
+
+```bash
+calibrate llm --verify --agent-url https://your-agent.com/chat --agent-headers '{"Authorization": "Bearer YOUR_API_KEY"}'
+```
+
+This sends a test message and checks that the response matches the required format, printing a clear error if something is wrong.
+
+---
+
+## Test cases
+
+An array of test cases to evaluate your agent on. Each test case has:
 
 | Key          | Type   | Description                                                                       |
 | ------------ | ------ | --------------------------------------------------------------------------------- |
 | `history`    | array  | Conversation history as context for the agent to generate the next output         |
 | `evaluation` | object | The criteria for evaluating the agent's output — either a tool call or a response |
 
-**Tool call test** — verifies the LLM calls the correct tool with expected arguments:
+**Tool call test** — verifies the agent calls the correct tool with expected arguments:
 
 ```json
 {
@@ -77,7 +156,7 @@ An array of test cases. These are the scenarios you want to evaluate your agent 
   called without checking the arguments.
 </Note>
 
-**Response test** — verifies the LLM's response meets the criteria defined (evaluated by an LLM judge):
+**Response test** — verifies the agent's response meets the criteria defined (evaluated by an LLM judge):
 
 ```json
 {
@@ -92,94 +171,216 @@ An array of test cases. These are the scenarios you want to evaluate your agent 
 }
 ```
 
-### Full example
+For agent connection, your agent owns its tools internally — there is no need to define them in the config. The `history` and `evaluation` keys work identically for both setup options.
 
-```json
-{
-  "system_prompt": "You are a helpful customer support assistant...",
-  "tools": [
+---
+
+## Full examples
+
+<AccordionGroup>
+  <Accordion title="Calibrate agent example">
+    See the [full file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-internal-agent.json).
+
+    ```json
     {
-      "type": "client",
-      "name": "log_interaction",
-      "description": "Log customer interaction details",
-      "parameters": [
+      "system_prompt": "You are a helpful customer support assistant...",
+      "tools": [
         {
-          "id": "interaction_type",
-          "type": "string",
-          "description": "Type of interaction",
-          "required": true
+          "type": "client",
+          "name": "log_interaction",
+          "description": "Log customer interaction details",
+          "parameters": [
+            {
+              "id": "interaction_type",
+              "type": "string",
+              "description": "Type of interaction",
+              "required": true
+            },
+            {
+              "id": "sentiment",
+              "type": "string",
+              "description": "Customer sentiment",
+              "required": true
+            }
+          ]
         },
         {
-          "id": "sentiment",
-          "type": "string",
-          "description": "Customer sentiment",
-          "required": true
+          "type": "webhook",
+          "name": "check_order",
+          "description": "Check the status of a customer order",
+          "parameters": [],
+          "webhook": {
+            "method": "GET",
+            "url": "https://api.example.com/orders",
+            "timeout": 10,
+            "headers": [{ "name": "Authorization", "value": "Bearer API_KEY" }],
+            "queryParameters": [
+              {
+                "id": "order_id",
+                "type": "string",
+                "description": "The customer's order ID",
+                "required": true
+              }
+            ]
+          }
+        }
+      ],
+      "test_cases": [
+        {
+          "history": [
+            { "role": "assistant", "content": "Hello! How can I help you today?" },
+            { "role": "user", "content": "Check order ORD-12345" }
+          ],
+          "evaluation": {
+            "type": "tool_call",
+            "tool_calls": [
+              { "tool": "check_order", "arguments": { "order_id": "ORD-12345" } }
+            ]
+          }
+        },
+        {
+          "history": [
+            { "role": "assistant", "content": "Hello! How can I help you today?" },
+            { "role": "user", "content": "What's the weather like?" }
+          ],
+          "evaluation": {
+            "type": "response",
+            "criteria": "The assistant should politely redirect to store-related topics."
+          }
         }
       ]
-    },
+    }
+    ```
+
+  </Accordion>
+
+  <Accordion title="Agent connection example">
+    See the [full file on GitHub](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-external-agent.json).
+
+    ```json
     {
-      "type": "webhook",
-      "name": "check_order",
-      "description": "Check the status of a customer order",
-      "parameters": [],
-      "webhook": {
-        "method": "GET",
-        "url": "https://api.example.com/orders",
-        "timeout": 10,
-        "headers": [{ "name": "Authorization", "value": "Bearer API_KEY" }],
-        "queryParameters": [
-          {
-            "id": "order_id",
-            "type": "string",
-            "description": "The customer's order ID",
-            "required": true
+      "agent_url": "https://your-agent.com/chat",
+      "agent_headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      },
+      "test_cases": [
+        {
+          "history": [
+            { "role": "assistant", "content": "Hello! How can I help you today?" },
+            { "role": "user", "content": "Check order ORD-12345" }
+          ],
+          "evaluation": {
+            "type": "tool_call",
+            "tool_calls": [
+              { "tool": "check_order", "arguments": { "order_id": "ORD-12345" } }
+            ]
           }
-        ]
-      }
+        },
+        {
+          "history": [
+            { "role": "assistant", "content": "Hello! How can I help you today?" },
+            { "role": "user", "content": "What's the weather like?" }
+          ],
+          "evaluation": {
+            "type": "response",
+            "criteria": "The assistant should politely redirect to store-related topics."
+          }
+        }
+      ]
     }
-  ],
-  "test_cases": [
-    {
-      "history": [
-        { "role": "assistant", "content": "Hello! How can I help you today?" },
-        { "role": "user", "content": "Check order ORD-12345" }
-      ],
-      "evaluation": {
-        "type": "tool_call",
-        "tool_calls": [
-          { "tool": "check_order", "arguments": { "order_id": "ORD-12345" } }
-        ]
-      }
-    },
-    {
-      "history": [
-        { "role": "assistant", "content": "Hello! How can I help you today?" },
-        { "role": "user", "content": "What's the weather like?" }
-      ],
-      "evaluation": {
-        "type": "response",
-        "criteria": "The assistant should politely redirect to store-related topics."
-      }
-    }
-  ]
-}
-```
+    ```
+
+  </Accordion>
+</AccordionGroup>
+
+---
 
 ## Get started
+
+### Interactive mode
+
+Run `calibrate llm` with no arguments to launch the interactive UI:
 
 ```bash
 calibrate llm
 ```
 
-The interactive UI guides you through the full evaluation process:
+**Calibrate agent** — the UI detects that your config defines a system prompt and tools and guides you through:
 
-1. **Config file** — path to the config file you created in the [previous](#configuration) section
+1. **Config file** — path to your config file
 2. **Provider** — OpenRouter or OpenAI
-3. **Model entry** — enter the models you want to evaluate
-4. **Output directory** — where results will be saved (defaults to `./out`)
-5. **API keys** — enter the API keys for the selected providers
+3. **Model entry** — enter model names one at a time (single or multiple)
+4. **Confirm models** — review the list and add more or proceed
+5. **Output directory** — where results will be saved (defaults to `./out`)
+6. **API keys** — enter the API keys for the selected provider
 
-The evaluation runs the selected models in parallel (max 2 at a time), showing the results for each test as they are ready.
+The evaluation runs the selected models in parallel (max 2 at a time), showing results for each test as they complete.
+
+**Agent connection** — the UI detects `agent_url` in your config and switches to agent mode:
+
+_Single test:_
+
+1. **Config file** — path to your config file (with `agent_url` and optionally `agent_headers`)
+2. **Mode** — select "Single test"
+3. **Verify** — calibrate verifies the connection; shows success or failure with the option to go back
+4. **Output directory** — where results will be saved (defaults to `./out`)
+5. **API keys** — only `OPENAI_API_KEY` is required (used by the LLM judge)
+
+_Benchmark across models:_
+
+1. **Config file** — path to your config file (with `agent_url` and optionally `agent_headers`)
+2. **Mode** — select "Benchmark across models"
+3. **Model entry** — enter a model name; calibrate verifies the connection with that model before asking if you want to add another
+4. **Confirm models** — review the list and add more or proceed
+5. **Output directory** — where results will be saved (defaults to `./out`)
+6. **API keys** — only `OPENAI_API_KEY` is required (used by the LLM judge)
+
+### Non-interactive mode
+
+Pass a config file directly to skip the UI.
+
+**Calibrate agent:**
+
+Single model:
+
+```bash
+calibrate llm -c config.json -m openai/gpt-4.1 -p openrouter -o ./out
+```
+
+Multiple models (benchmark — runs in parallel, generates a leaderboard):
+
+```bash
+calibrate llm -c config.json -m openai/gpt-4.1 claude-sonnet-4-5 -p openrouter -o ./out
+```
+
+**Agent connection:**
+
+Your config must include `agent_url` and optionally `agent_headers`:
+
+```json
+{
+  "agent_url": "https://your-agent.com/chat",
+  "agent_headers": {
+    "Authorization": "Bearer YOUR_API_KEY"
+  }
+}
+```
+
+Single run (use the default model of the agent):
+
+```bash
+calibrate llm -c config.json -o ./out
+```
+
+Calibrate verifies the connection before running. Results are saved directly to the output directory.
+
+Benchmark across models — calibrate verifies the connection for each model, then runs the test suite once per model. The model name is included in each request so your agent can route to the right model:
+
+```bash
+calibrate llm -c config.json -m gemma-4-26b-a4b-it gpt-4o -o ./out
+```
+
+Each model gets its own results folder, and a summary with pass rates for all models is printed at the end.
 
 ## Output
 

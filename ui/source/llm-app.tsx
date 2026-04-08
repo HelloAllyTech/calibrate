@@ -12,74 +12,17 @@ import {
 } from "./components.js";
 import { getCredential, saveCredential } from "./credentials.js";
 import { type CalibrateCmd, findCalibrateBin, stripAnsi } from "./shared.js";
-
-// ─── Types ───────────────────────────────────────────────────
-type LlmStep =
-  | "init"
-  | "config-path"
-  | "provider"
-  | "enter-model"
-  | "model-confirm"
-  | "output-dir"
-  | "output-dir-confirm"
-  | "api-keys"
-  | "running"
-  | "leaderboard";
-
-interface ModelState {
-  status: "waiting" | "running" | "done" | "error";
-  logs: string[];
-  metrics?: { passed?: number; failed?: number; total?: number };
-}
-
-interface HistoryMessage {
-  role: string;
-  content: string;
-}
-
-interface ToolCall {
-  tool: string;
-  arguments: Record<string, unknown>;
-}
-
-interface TestResult {
-  id: string;
-  history: HistoryMessage[];
-  evaluationType: string;
-  evaluationCriteria: string;
-  actualOutput: string;
-  passed: boolean;
-  reasoning: string;
-}
-
-const MAX_PARALLEL_MODELS = 2;
-
-// ─── Model Examples ───────────────────────────────────────────
-const OPENAI_MODEL_EXAMPLES = [
-  "gpt-4.1",
-  "gpt-4.1-mini",
-  "gpt-4o",
-  "gpt-4o-mini",
-  "o1",
-  "o1-mini",
-  "o3-mini",
-];
-
-const OPENROUTER_MODEL_EXAMPLES = [
-  "openai/gpt-4.1",
-  "anthropic/claude-sonnet-4",
-  "google/gemini-2.0-flash-001",
-];
-
-interface LlmConfig {
-  configPath: string;
-  models: string[];
-  provider: string;
-  outputDir: string;
-  overwrite: boolean;
-  envVars: Record<string, string>;
-  calibrate: CalibrateCmd;
-}
+import {
+  type LlmStep,
+  type LlmConfig,
+  type ModelState,
+  type HistoryMessage,
+  type ToolCall,
+  type TestResult,
+  MAX_PARALLEL_MODELS,
+  OPENAI_MODEL_EXAMPLES,
+  OPENROUTER_MODEL_EXAMPLES,
+} from "./llm-types.js";
 
 // ─── Main Component ──────────────────────────────────────────
 export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
@@ -93,6 +36,10 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     overwrite: false,
     envVars: {},
     calibrate: { cmd: "calibrate", args: [] },
+    agentUrl: "",
+    agentHeaders: {},
+    agentBenchmark: false,
+    agentModels: [],
   });
 
   // ── overwrite confirmation state ──
@@ -110,6 +57,10 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
   const [missingKeys, setMissingKeys] = useState<string[]>([]);
   const [currentKeyIdx, setCurrentKeyIdx] = useState(0);
   const [keyInput, setKeyInput] = useState("");
+
+  // ── agent verify state ──
+  const [verifyStatus, setVerifyStatus] = useState<"running" | "success" | "failed">("running");
+  const [verifyError, setVerifyError] = useState("");
 
   // ── run state ──
   const [modelStates, setModelStates] = useState<Record<string, ModelState>>(
@@ -160,8 +111,31 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
       case "model-confirm":
         setStep("enter-model");
         break;
+      case "agent-mode":
+        setStep("config-path");
+        break;
+      case "agent-model-entry":
+        setStep(config.agentModels.length > 0 ? "agent-model-confirm" : "agent-mode");
+        setDuplicateError("");
+        break;
+      case "agent-model-confirm":
+        setStep("agent-verify");
+        break;
+      case "agent-verify":
+        if (config.agentBenchmark) {
+          // Remove the last added model and go back to entry
+          setConfig((c) => ({ ...c, agentModels: c.agentModels.slice(0, -1) }));
+          setStep("agent-model-entry");
+        } else {
+          setStep("agent-mode");
+        }
+        break;
       case "output-dir":
-        setStep("model-confirm");
+        setStep(
+          config.agentUrl
+            ? config.agentBenchmark ? "agent-model-confirm" : "agent-verify"
+            : "model-confirm"
+        );
         break;
       case "output-dir-confirm":
         setStep("output-dir");
@@ -259,8 +233,9 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     if (!getCredential("OPENAI_API_KEY")) {
       needed.push("OPENAI_API_KEY");
     }
-    // Need OPENROUTER_API_KEY if using OpenRouter
-    if (provider === "openrouter") {
+    // Need OPENROUTER_API_KEY only for internal agent using OpenRouter
+    // Agent connection path does not use provider/model, so skip this check
+    if (!config.agentUrl && provider === "openrouter") {
       if (!getCredential("OPENROUTER_API_KEY")) {
         needed.push("OPENROUTER_API_KEY");
       }
@@ -270,19 +245,37 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
 
   // ── Build model directory name (matches Python logic) ──
   function getModelDir(model: string): string {
-    let modelDir =
+    const modelDir =
       config.provider === "openai" ? `${config.provider}/${model}` : model;
     return modelDir.replace(/\//g, "__");
+  }
+
+  // ── Resolve the directory where results.json lives for a given run key ──
+  function getResultsDir(model: string): string {
+    // Single agent run: Python saves directly to outputDir (no subfolder)
+    if (config.agentUrl && !config.agentBenchmark) {
+      return config.outputDir;
+    }
+    // Benchmark agent run: model name used as subfolder (slashes → __)
+    if (config.agentUrl && config.agentBenchmark) {
+      return path.join(config.outputDir, model.replace(/\//g, "__"));
+    }
+    // Internal model path
+    return path.join(config.outputDir, getModelDir(model));
   }
 
   // ── Initialize model states when entering running step ──
   useEffect(() => {
     if (step !== "running") return;
 
-    // Initialize model states
     const initialStates: Record<string, ModelState> = {};
-    for (const model of config.models) {
-      initialStates[model] = { status: "waiting", logs: [] };
+    const keys = config.agentUrl
+      ? config.agentBenchmark
+        ? config.agentModels
+        : ["agent"]
+      : config.models;
+    for (const key of keys) {
+      initialStates[key] = { status: "waiting", logs: [] };
     }
     setModelStates(initialStates);
     setPhase("eval");
@@ -308,18 +301,29 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     Object.assign(env, config.envVars);
     env.PYTHONUNBUFFERED = "1";
 
-    const cmdArgs = [
-      ...bin.args,
-      "llm",
-      "-c",
-      config.configPath,
-      "-o",
-      config.outputDir,
-      "-m",
-      model,
-      "-p",
-      config.provider,
-    ];
+    const cmdArgs = config.agentUrl
+      ? [
+          ...bin.args,
+          "llm",
+          "-c",
+          config.configPath,
+          "-o",
+          config.outputDir,
+          "--skip-verify",
+          ...(config.agentBenchmark ? ["-m", model] : []),
+        ]
+      : [
+          ...bin.args,
+          "llm",
+          "-c",
+          config.configPath,
+          "-o",
+          config.outputDir,
+          "-m",
+          model,
+          "-p",
+          config.provider,
+        ];
 
     setModelStates((prev) => ({
       ...prev,
@@ -365,12 +369,7 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
       let metricsData: ModelState["metrics"] = undefined;
       if (code === 0) {
         try {
-          const modelDir = getModelDir(model);
-          const resultsPath = path.join(
-            config.outputDir,
-            modelDir,
-            "results.json"
-          );
+          const resultsPath = path.join(getResultsDir(model), "results.json");
           if (fs.existsSync(resultsPath)) {
             const results = JSON.parse(fs.readFileSync(resultsPath, "utf-8"));
             const passed = results.filter(
@@ -407,7 +406,13 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
       (s) => s.status === "done" || s.status === "error"
     ).length;
 
-    if (completedCount >= config.models.length) {
+    const runKeys = config.agentUrl
+      ? config.agentBenchmark
+        ? config.agentModels
+        : ["agent"]
+      : config.models;
+
+    if (completedCount >= runKeys.length) {
       // All models done, generate leaderboard then finish
       setPhase("leaderboard");
 
@@ -450,25 +455,80 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     // Start more models if we have capacity
     if (
       runningCount < MAX_PARALLEL_MODELS &&
-      nextModelIdx < config.models.length
+      nextModelIdx < runKeys.length
     ) {
-      const model = config.models[nextModelIdx]!;
+      const model = runKeys[nextModelIdx]!;
       setNextModelIdx((idx) => idx + 1);
       startModel(model);
     }
   }, [step, phase, runningCount, nextModelIdx, modelStates]);
 
+  // ── Agent verify effect ──
+  useEffect(() => {
+    if (step !== "agent-verify") return;
+    setVerifyStatus("running");
+    setVerifyError("");
+
+    const bin = config.calibrate;
+    const verifyArgs = [
+      ...bin.args,
+      "llm",
+      "--verify",
+      "--agent-url",
+      config.agentUrl,
+      ...(Object.keys(config.agentHeaders).length > 0
+        ? ["--agent-headers", JSON.stringify(config.agentHeaders)]
+        : []),
+      ...(config.agentBenchmark && config.agentModels.length > 0
+        ? ["-m", config.agentModels[config.agentModels.length - 1]!]
+        : []),
+    ];
+
+    const env: Record<string, string> = { ...process.env } as Record<string, string>;
+    env.PYTHONUNBUFFERED = "1";
+
+    const proc = spawn(bin.cmd, verifyArgs, { env, stdio: ["pipe", "pipe", "pipe"] });
+
+    let output = "";
+    proc.stdout?.on("data", (d: Buffer) => { output += d.toString(); });
+    proc.stderr?.on("data", (d: Buffer) => { output += d.toString(); });
+
+    proc.on("close", (code: number | null) => {
+      if (code === 0) {
+        setVerifyStatus("success");
+        setTimeout(() => {
+          setStep(config.agentBenchmark ? "agent-model-confirm" : "output-dir");
+        }, 1000);
+      } else {
+        // Extract error message from output
+        const lines = output.split("\n").filter((l) => l.trim());
+        const errorLine =
+          lines.find((l) => l.includes("✗") || l.includes("Verification failed") || l.includes("error")) ||
+          lines[lines.length - 1] ||
+          "Connection failed";
+        setVerifyStatus("failed");
+        setVerifyError(errorLine);
+      }
+    });
+
+    proc.on("error", () => {
+      setVerifyStatus("failed");
+      setVerifyError("Failed to run verification");
+    });
+  }, [step]);
+
   // ── Load metrics for leaderboard ──
   const loadMetrics = () => {
     const results: typeof metrics = [];
-    for (const model of config.models) {
+    const metricKeys = config.agentUrl
+      ? config.agentBenchmark
+        ? config.agentModels
+        : ["agent"]
+      : config.models;
+
+    for (const model of metricKeys) {
       try {
-        const modelDir = getModelDir(model);
-        const resultsPath = path.join(
-          config.outputDir,
-          modelDir,
-          "results.json"
-        );
+        const resultsPath = path.join(getResultsDir(model), "results.json");
         if (fs.existsSync(resultsPath)) {
           const data = JSON.parse(fs.readFileSync(resultsPath, "utf-8"));
           const passed = data.filter(
@@ -534,8 +594,7 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
   useEffect(() => {
     if (!selectedModel) return;
     try {
-      const modelDir = getModelDir(selectedModel);
-      const resultsPath = path.join(config.outputDir, modelDir, "results.json");
+      const resultsPath = path.join(getResultsDir(selectedModel), "results.json");
       if (fs.existsSync(resultsPath)) {
         const data = JSON.parse(fs.readFileSync(resultsPath, "utf-8"));
         const results: TestResult[] = data.map(
@@ -646,8 +705,17 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
                     setConfigInput("");
                     return;
                   }
-                  setConfig((c) => ({ ...c, configPath: resolved }));
-                  setStep("provider");
+                  let agentUrl = "";
+                  let agentHeaders: Record<string, string> = {};
+                  try {
+                    const parsed = JSON.parse(fs.readFileSync(resolved, "utf-8"));
+                    agentUrl = parsed.agent_url || "";
+                    agentHeaders = parsed.agent_headers || {};
+                  } catch {
+                    // ignore parse errors, treat as internal agent
+                  }
+                  setConfig((c) => ({ ...c, configPath: resolved, agentUrl, agentHeaders }));
+                  setStep(agentUrl ? "agent-mode" : "provider");
                 }
               }}
               placeholder="./config.json"
@@ -817,6 +885,114 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
       );
     }
 
+    case "agent-mode":
+      return (
+        <Box flexDirection="column" padding={1}>
+          {header}
+          <Text dimColor>How do you want to run tests against your agent?</Text>
+          <Box marginTop={1}>
+            <SelectInput
+              items={[
+                { label: "Single test — run all test cases once", value: "single" },
+                { label: "Benchmark — run across multiple models", value: "benchmark" },
+              ]}
+              onSelect={(v) => {
+                const isBenchmark = v === "benchmark";
+                setConfig((c) => ({ ...c, agentBenchmark: isBenchmark, agentModels: [] }));
+                setStep(isBenchmark ? "agent-model-entry" : "agent-verify");
+              }}
+            />
+          </Box>
+          <Box marginTop={1}>
+            <Text dimColor>Press Esc to go back</Text>
+          </Box>
+        </Box>
+      );
+
+    case "agent-model-entry": {
+      const agentModelInput = modelInput;
+      return (
+        <Box flexDirection="column" padding={1}>
+          {header}
+          <Text dimColor>Enter the model name to benchmark. Your agent will receive the model name in each request.</Text>
+          {config.agentModels.length > 0 && (
+            <Box marginTop={1} flexDirection="column">
+              <Text bold>Selected models:</Text>
+              {config.agentModels.map((m, i) => (
+                <Text key={i} color="green">{"  "}• {m}</Text>
+              ))}
+            </Box>
+          )}
+          {duplicateError && (
+            <Box marginTop={1}>
+              <Text color="red">{duplicateError}</Text>
+            </Box>
+          )}
+          <Box marginTop={1}>
+            <Text>{config.agentModels.length === 0 ? "Model: " : "Add another model: "}</Text>
+            <TextInput
+              value={agentModelInput}
+              onChange={(v) => { setModelInput(v); setDuplicateError(""); }}
+              onSubmit={(v) => {
+                const input = v.trim();
+                if (input) {
+                  if (config.agentModels.includes(input)) {
+                    setDuplicateError(`Model "${input}" is already selected.`);
+                    return;
+                  }
+                  setConfig((c) => ({ ...c, agentModels: [...c.agentModels, input] }));
+                  setModelInput("");
+                  setDuplicateError("");
+                  setStep("agent-verify");
+                } else if (config.agentModels.length > 0) {
+                  setStep("agent-model-confirm");
+                }
+              }}
+              placeholder="gemma-4-26b-a4b-it"
+            />
+          </Box>
+          <Box marginTop={1}>
+            <Text dimColor>Enter to submit, Esc to go back</Text>
+          </Box>
+        </Box>
+      );
+    }
+
+    case "agent-model-confirm": {
+      return (
+        <Box flexDirection="column" padding={1}>
+          {header}
+          <Box flexDirection="column">
+            <Text bold>Selected models:</Text>
+            {config.agentModels.map((m, i) => (
+              <Text key={i} color="green">{"  "}• {m}</Text>
+            ))}
+          </Box>
+          <Box marginTop={1}>
+            <Text>Add another model?</Text>
+          </Box>
+          <Box marginTop={1}>
+            <SelectInput
+              items={[
+                { label: "Yes, add another model", value: "add" },
+                { label: "No, continue with these models", value: "continue" },
+              ]}
+              onSelect={(v) => {
+                if (v === "add") {
+                  setStep("agent-model-entry");
+                } else {
+                  setStep("output-dir");
+                }
+              }}
+            />
+          </Box>
+          <Box marginTop={1}>
+            <Text dimColor>Press Esc to go back</Text>
+          </Box>
+        </Box>
+      );
+    }
+
     case "output-dir":
       return (
         <Box flexDirection="column" padding={1}>
@@ -839,7 +1015,6 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
                   return;
                 }
 
-                // No existing data, proceed
                 const missing = checkApiKeys(config.provider);
                 if (missing.length > 0) {
                   setMissingKeys(missing);
@@ -948,15 +1123,65 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
       );
     }
 
+    case "agent-verify": {
+      return (
+        <Box flexDirection="column" padding={1}>
+          {header}
+          <Text dimColor>Verifying agent connection: {config.agentUrl}</Text>
+          <Box marginTop={1}>
+            {verifyStatus === "running" && (
+              <Spinner label="Verifying connection..." />
+            )}
+            {verifyStatus === "success" && (
+              <Text color="green">✓ Connection verified</Text>
+            )}
+            {verifyStatus === "failed" && (
+              <Box flexDirection="column">
+                <Text color="red">✗ Verification failed</Text>
+                {verifyError && (
+                  <Box marginTop={1}>
+                    <Text dimColor>{stripAnsi(verifyError)}</Text>
+                  </Box>
+                )}
+                <Box marginTop={1}>
+                  <SelectInput
+                    items={[{ label: "Go back", value: "back" }]}
+                    onSelect={() => {
+                      if (config.agentBenchmark) {
+                        setConfig((c) => ({ ...c, agentModels: c.agentModels.slice(0, -1) }));
+                        setStep("agent-model-entry");
+                      } else {
+                        setStep("agent-mode");
+                      }
+                    }}
+                  />
+                </Box>
+              </Box>
+            )}
+          </Box>
+        </Box>
+      );
+    }
+
     case "running": {
       const completedCount = Object.values(modelStates).filter(
         (s) => s.status === "done" || s.status === "error"
       ).length;
 
+      const runKeys = config.agentUrl
+        ? config.agentBenchmark
+          ? config.agentModels
+          : ["agent"]
+        : config.models;
+
       // Get currently running models for log display
-      const runningModels = config.models.filter(
+      const runningModels = runKeys.filter(
         (m) => modelStates[m]?.status === "running"
       );
+
+      // Single agent run: simpler status display, no model label
+      const isSingleAgentRun = config.agentUrl && !config.agentBenchmark;
+      const singleState = isSingleAgentRun ? modelStates["agent"] : undefined;
 
       return (
         <Box flexDirection="column" padding={1}>
@@ -966,14 +1191,38 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
           </Box>
           <Box marginBottom={1}>
             <Text dimColor>
-              {completedCount}/{config.models.length} models
-              {runningCount > 1 && ` (${runningCount} running in parallel)`}
-              {" | "}Provider: {config.provider}
+              {config.agentUrl
+                ? `Agent: ${config.agentUrl}`
+                : `${completedCount}/${runKeys.length} models${runningCount > 1 ? ` (${runningCount} running in parallel)` : ""} | Provider: ${config.provider}`}
             </Text>
           </Box>
 
-          {/* Model status list */}
-          {config.models.map((model) => {
+          {/* Single agent run: just a status line, no model label */}
+          {isSingleAgentRun && singleState && (
+            <Box>
+              <Box width={4}>
+                {singleState.status === "done" ? (
+                  <Text color="green"> + </Text>
+                ) : singleState.status === "error" ? (
+                  <Text color="red"> x </Text>
+                ) : (
+                  <Box><Text> </Text><Spinner /><Text> </Text></Box>
+                )}
+              </Box>
+              {singleState.status === "done" && singleState.metrics ? (
+                <Text dimColor>{singleState.metrics.passed}/{singleState.metrics.total} passed</Text>
+              ) : singleState.status === "running" ? (
+                <Text color="cyan">Running tests...</Text>
+              ) : singleState.status === "error" ? (
+                <Text color="red">Failed</Text>
+              ) : (
+                <Text dimColor>Waiting</Text>
+              )}
+            </Box>
+          )}
+
+          {/* Multi-model status list (benchmark or internal models) */}
+          {!isSingleAgentRun && runKeys.map((model) => {
             const state = modelStates[model];
             if (!state) return null;
             return (
@@ -1089,18 +1338,19 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
       const leaderboardDir = path.join(config.outputDir, "leaderboard");
       const resolvedOutputDir = path.resolve(config.outputDir);
 
+      // Determine the model keys for this run
+      const leaderboardKeys = config.agentUrl
+        ? config.agentBenchmark
+          ? config.agentModels
+          : ["agent"]
+        : config.models;
+
       // Model Detail View
       if (view === "model-detail" && selectedModel) {
         const visibleRows = modelResults.slice(
           scrollOffset,
           scrollOffset + MAX_VISIBLE_ROWS
         );
-
-        // Format history messages as "Role: Message"
-        const formatHistory = (history: HistoryMessage[]): string => {
-          if (!history || history.length === 0) return "-";
-          return history.map((h) => `${h.role}: ${h.content}`).join(" | ");
-        };
 
         // Truncate text for display
         const truncate = (s: string, max: number) =>
@@ -1312,8 +1562,8 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
             <Box marginTop={1}>
               <SelectInput
                 items={[
-                  ...config.models.map((m) => ({
-                    label: `${m} — View test-by-test results`,
+                  ...leaderboardKeys.map((m) => ({
+                    label: (config.agentUrl && !config.agentBenchmark) ? "View test-by-test results" : `${m} — View test-by-test results`,
                     value: m,
                   })),
                   { label: "Exit", value: "__exit__" },

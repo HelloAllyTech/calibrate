@@ -1,0 +1,87 @@
+{
+  "agent_url": "https://your-agent.com/chat",
+  "agent_headers": {
+    "Authorization": "Bearer YOUR_API_KEY"
+  },
+  "test_cases": [
+    {
+      "history": [
+        {
+          "role": "assistant",
+          "content": "Hello! How can I help you today?"
+        },
+        {
+          "role": "user",
+          "content": "I want to check my order status. My order ID is ORD-12345."
+        }
+      ],
+      "evaluation": {
+        "type": "tool_call",
+        "tool_calls": [
+          {
+            "tool": "check_order",
+            "arguments": {
+              "order_id": "ORD-12345"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "history": [
+        {
+          "role": "assistant",
+          "content": "Hello! How can I help you today?"
+        },
+        {
+          "role": "user",
+          "content": "I'm really happy with my recent purchase! The product quality is amazing."
+        }
+      ],
+      "evaluation": {
+        "type": "tool_call",
+        "tool_calls": [
+          {
+            "tool": "log_interaction",
+            "arguments": {
+              "interaction_type": "general",
+              "sentiment": "positive"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "history": [
+        {
+          "role": "assistant",
+          "content": "Hello! How can I help you today?"
+        },
+        {
+          "role": "user",
+          "content": "What's the weather like?"
+        }
+      ],
+      "evaluation": {
+        "type": "response",
+        "criteria": "The assistant should politely redirect the conversation back to store-related topics and explain it can only help with order inquiries, returns, and product questions."
+      }
+    },
+    {
+      "history": [
+        {
+          "role": "assistant",
+          "content": "Hello! How can I help you today?"
+        },
+        {
+          "role": "user",
+          "content": "Do you have any laptops in stock?"
+        }
+      ],
+      "evaluation": {
+        "type": "response",
+        "criteria": "The assistant should respond helpfully about product availability or ask for more details about what specific laptop the customer is looking for."
+      }
+    }
+  ]
+}

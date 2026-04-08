@@ -132,6 +132,9 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
   // ── overwrite confirmation state ──
   const [existingDirs, setExistingDirs] = useState<string[]>([]);
 
+  // ── agent connection flag ──
+  const [isAgentConnection, setIsAgentConnection] = useState(false);
+
   // ── input state ──
   const [configInput, setConfigInput] = useState("");
   const [outputInput, setOutputInput] = useState("./out");
@@ -145,7 +148,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
 
   // ── run state (multi-model) ──
   const [modelStates, setModelStates] = useState<Record<string, ModelState>>(
-    {}
+    {},
   );
   const [phase, setPhase] = useState<"eval" | "leaderboard" | "done">("eval");
   const [runningCount, setRunningCount] = useState(0);
@@ -196,7 +199,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
         setStep("output-dir");
         break;
       case "output-dir":
-        if (config.type === "text") {
+        if (config.type === "text" && !isAgentConnection) {
           setStep("enter-model");
         } else {
           setStep("config-path");
@@ -272,7 +275,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
     // Scroll in detail view
     if (step === "leaderboard" && view === "sim-detail") {
       const selectedResult = evalResults.find(
-        (r) => r.simulation === selectedSim
+        (r) => r.simulation === selectedSim,
       );
       const itemCount = selectedResult?.criteria.length || 0;
       if (key.upArrow && scrollOffset > 0) {
@@ -322,7 +325,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
       // Always need OPENAI_API_KEY for LLM judge/evaluation
       addIfMissing("OPENAI_API_KEY");
       // Need OPENROUTER_API_KEY if using OpenRouter
-      if (provider === "openrouter") {
+      if (provider === "openrouter" && !isAgentConnection) {
         addIfMissing("OPENROUTER_API_KEY");
       }
     } else if (simType === "voice") {
@@ -334,7 +337,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
       // Read config to check agent's STT, TTS, LLM provider keys
       try {
         const configData = JSON.parse(
-          fs.readFileSync(config.configPath, "utf-8")
+          fs.readFileSync(config.configPath, "utf-8"),
         );
         const sttProvider = configData.stt?.provider || "google";
         const ttsProvider = configData.tts?.provider || "google";
@@ -386,7 +389,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
       if (fs.existsSync(config.configPath)) {
         try {
           const configData = JSON.parse(
-            fs.readFileSync(config.configPath, "utf-8")
+            fs.readFileSync(config.configPath, "utf-8"),
           );
           numPersonas = configData.personas?.length || 0;
           numScenarios = configData.scenarios?.length || 0;
@@ -407,7 +410,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
         });
         const simDirs = entries
           .filter(
-            (e) => e.isDirectory() && e.name.startsWith("simulation_persona_")
+            (e) => e.isDirectory() && e.name.startsWith("simulation_persona_"),
           )
           .map((e) => e.name);
 
@@ -433,7 +436,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
           const evalPath = path.join(
             config.outputDir,
             dirName,
-            "evaluation_results.csv"
+            "evaluation_results.csv",
           );
           if (fs.existsSync(evalPath)) {
             status = "done";
@@ -486,7 +489,6 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
     Object.assign(env, config.envVars);
     env.PYTHONUNBUFFERED = "1";
 
-    const model = config.models[0] || "gpt-4.1";
     const cmdArgs = [
       ...bin.args,
       "simulations",
@@ -496,11 +498,10 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
       config.configPath,
       "-o",
       config.outputDir,
-      "-m",
-      model,
-      "-p",
-      config.provider,
     ];
+    if (!isAgentConnection) {
+      cmdArgs.push("-m", config.models[0] || "gpt-4.1", "-p", config.provider);
+    }
 
     if (config.parallel > 1) {
       cmdArgs.push("-n", String(config.parallel));
@@ -703,7 +704,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
     try {
       if (!config.configPath || !fs.existsSync(config.configPath)) return;
       const configData = JSON.parse(
-        fs.readFileSync(config.configPath, "utf-8")
+        fs.readFileSync(config.configPath, "utf-8"),
       );
       if (configData.personas && Array.isArray(configData.personas)) {
         setPersonas(configData.personas);
@@ -729,7 +730,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
       const entries = fs.readdirSync(config.outputDir, { withFileTypes: true });
       const simDirs = entries
         .filter(
-          (e) => e.isDirectory() && e.name.startsWith("simulation_persona_")
+          (e) => e.isDirectory() && e.name.startsWith("simulation_persona_"),
         )
         .map((e) => e.name);
 
@@ -739,7 +740,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
       try {
         if (config.configPath && fs.existsSync(config.configPath)) {
           const configData = JSON.parse(
-            fs.readFileSync(config.configPath, "utf-8")
+            fs.readFileSync(config.configPath, "utf-8"),
           );
           loadedPersonas = configData.personas || [];
           loadedScenarios = configData.scenarios || [];
@@ -763,7 +764,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
         const evalPath = path.join(
           config.outputDir,
           dirName,
-          "evaluation_results.csv"
+          "evaluation_results.csv",
         );
         if (!fs.existsSync(evalPath)) continue;
 
@@ -772,7 +773,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
         const transcriptPath = path.join(
           config.outputDir,
           dirName,
-          "transcript.json"
+          "transcript.json",
         );
         if (fs.existsSync(transcriptPath)) {
           try {
@@ -915,11 +916,19 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
             Path to a JSON config file containing system prompt, tools,
             personas, scenarios, and evaluation criteria.
           </Text>
+          {initError ? (
+            <Box marginTop={1}>
+              <Text color="red">{initError}</Text>
+            </Box>
+          ) : null}
           <Box marginTop={1}>
             <Text>Config file: </Text>
             <TextInput
               value={configInput}
-              onChange={setConfigInput}
+              onChange={(v) => {
+                setInitError("");
+                setConfigInput(v);
+              }}
               onSubmit={(v) => {
                 if (v.trim()) {
                   const resolved = path.resolve(v.trim());
@@ -927,8 +936,23 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
                     setConfigInput("");
                     return;
                   }
+                  let hasAgentUrl = false;
+                  try {
+                    const parsed = JSON.parse(
+                      fs.readFileSync(resolved, "utf-8"),
+                    );
+                    hasAgentUrl = !!parsed.agent_url;
+                  } catch {}
+                  if (hasAgentUrl && config.type === "voice") {
+                    setConfigInput("");
+                    setInitError(
+                      "Agent connection is not supported for voice simulations. Use a calibrate agent config instead (https://calibrate.artpark.ai/docs/cli/simulations#set-up-your-agent) with the system prompts, tools, etc. defined in the config itself.",
+                    );
+                    return;
+                  }
+                  setIsAgentConnection(hasAgentUrl);
                   setConfig((c) => ({ ...c, configPath: resolved }));
-                  if (config.type === "text") {
+                  if (config.type === "text" && !hasAgentUrl) {
                     setStep("provider");
                   } else {
                     setStep("output-dir");
@@ -1416,14 +1440,14 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
       // Simulation Detail View - show transcript and evaluation
       if (view === "sim-detail" && selectedSim) {
         const selectedResult = evalResults.find(
-          (r) => r.simulation === selectedSim
+          (r) => r.simulation === selectedSim,
         );
         const criteria = selectedResult?.criteria || [];
         const transcript = selectedResult?.transcript || [];
 
         // Format tool calls for display
         const formatToolCall = (
-          tc: TranscriptMessage["tool_calls"]
+          tc: TranscriptMessage["tool_calls"],
         ): string => {
           if (!tc || tc.length === 0) return "";
           return tc
@@ -1488,8 +1512,8 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
                           m.role === "assistant"
                             ? "cyan"
                             : m.role === "user"
-                            ? "yellow"
-                            : "gray"
+                              ? "yellow"
+                              : "gray"
                         }
                         bold
                       >

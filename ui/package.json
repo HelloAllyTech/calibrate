@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx source/cli.tsx",
+    "test": "vitest run",
     "build": "tsc",
     "bundle": "esbuild source/cli.tsx --bundle --platform=node --target=node18 --outfile=../calibrate/ui/cli.bundle.mjs --format=esm --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
     "start": "node dist/cli.js"
@@ -16,8 +17,11 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
+    "@vitest/coverage-v8": "^4.1.2",
     "esbuild": "^0.27.3",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.2"
   }
 }

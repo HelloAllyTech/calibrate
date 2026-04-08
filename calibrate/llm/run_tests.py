@@ -1,8 +1,11 @@
 import asyncio
 import argparse
 import uuid
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
 from loguru import logger
+
+if TYPE_CHECKING:
+    from calibrate.connections import TextAgentConnection  # noqa: F401
 import os
 from os.path import join, exists
 import json
@@ -468,6 +471,62 @@ async def run_test(
     }
 
 
+async def run_test_external(
+    chat_history: List[dict],
+    evaluation: dict,
+    agent,
+    model: Optional[str] = None,
+) -> dict:
+    """Run a single LLM test case against an external text agent.
+
+    Sends ``chat_history`` to the agent and evaluates the response using the
+    same logic as the internal :func:`run_test`.
+
+    The agent must return ``{"response": ..., "tool_calls": [...]}`` — see
+    :meth:`~calibrate.connections.TextAgentConnection.call` for details.
+
+    Args:
+        chat_history: Conversation history (role/content dicts, no system message).
+        evaluation: Evaluation dict with ``type`` and criteria.
+        agent: A :class:`~calibrate.connections.TextAgentConnection`.
+        model: Optional model name included in the request body (for benchmarking).
+
+    Returns:
+        dict with ``output`` and ``metrics`` keys.
+    """
+    output = await agent.call(chat_history, model=model)
+    response = output.get("response")
+    tool_calls = output.get("tool_calls", [])
+
+    metrics = {"passed": False}
+
+    if evaluation["type"] == "tool_call":
+        metrics = evaluate_tool_calls(tool_calls, evaluation["tool_calls"])
+    elif evaluation["type"] == "response":
+        if response:
+            result = await test_response_llm_judge(
+                conversation=chat_history,
+                response=response,
+                criteria=evaluation["criteria"],
+            )
+            metrics["passed"] = result["match"]
+            metrics["reasoning"] = result["reasoning"]
+        else:
+            if tool_calls:
+                metrics["reasoning"] = (
+                    f"The agent made tool calls {tool_calls} but returned no text response"
+                )
+            else:
+                metrics["reasoning"] = "No reply was returned by the external agent"
+    else:
+        raise ValueError(f"Invalid evaluation type: {evaluation['type']}")
+
+    return {
+        "output": {"response": response, "tool_calls": tool_calls},
+        "metrics": metrics,
+    }
+
+
 async def run_model_tests(
     model: str,
     provider: str,
@@ -589,8 +648,7 @@ async def run_model_tests(
     return {
         "model": model,
         "provider": provider,
-        "passed": passed_count,
-        "total": total_tests,
+        "metrics": {"passed": passed_count, "total": total_tests},
         "results": results,
     }
 
@@ -659,9 +717,11 @@ async def main():
     print(f"\033[92mSummary\033[0m")
     print(f"\033[92m{'='*60}\033[0m\n")
 
-    pct = (result["passed"] / result["total"] * 100) if result["total"] > 0 else 0
+    passed = result["metrics"]["passed"]
+    total = result["metrics"]["total"]
+    pct = (passed / total * 100) if total > 0 else 0
     print(
-        f"  {result['provider']}/{result['model']}: {result['passed']}/{result['total']} ({pct:.1f}%)"
+        f"  {result['provider']}/{result['model']}: {passed}/{total} ({pct:.1f}%)"
     )
 
 

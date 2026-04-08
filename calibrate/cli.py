@@ -11,8 +11,8 @@ Usage:
     calibrate status                                  # Check provider connectivity
 
     # Direct mode:
-    calibrate llm -c config.json -m gpt-4.1 -p openrouter -o ./out
-    calibrate simulations --type text -c config.json -m gpt-4.1 -p openrouter -o ./out
+    calibrate llm -c config.json -m openai/gpt-4.1 -p openrouter -o ./out
+    calibrate simulations --type text -c config.json -m openai/gpt-4.1 -p openrouter -o ./out
     calibrate simulations --type voice -c config.json -o ./out
 """
 
@@ -84,6 +84,48 @@ def _launch_ink_ui(mode: str):
 
     result = subprocess.run([node_bin, str(bundle_path), mode])
     sys.exit(result.returncode)
+
+
+def _run_agent_verify(
+    agent_url: str,
+    agent_headers_raw: str | None,
+    models: list[str] | None = None,
+) -> None:
+    """Verify an external agent connection and print the result."""
+    from calibrate.connections import TextAgentConnection
+
+    headers = None
+    if agent_headers_raw:
+        try:
+            headers = json.loads(agent_headers_raw)
+        except json.JSONDecodeError:
+            print("✗ --agent-headers is not valid JSON")
+            sys.exit(1)
+
+    agent = TextAgentConnection(url=agent_url, headers=headers)
+
+    # If models provided, send the first model name in the verify request
+    model_hint: str | None = models[0] if models else None
+
+    body_preview = (
+        '{"messages": [...], "model": "' + model_hint + '"}'
+        if model_hint
+        else '{"messages": [{"role": "user", "content": "Hi"}]}'
+    )
+
+    print(f"\nVerifying agent connection: {agent_url}")
+    print(f"Sending: {body_preview}")
+    print("─" * 60)
+
+    result = asyncio.run(agent.verify(model=model_hint))
+
+    if result["ok"]:
+        print("✓ Connection verified — response format is correct")
+    else:
+        print(f"✗ Verification failed: {result['error']}")
+        if "details" in result:
+            print(f"  Details: {result['details']}")
+        sys.exit(1)
 
 
 def main():
@@ -184,6 +226,7 @@ Examples:
     # `calibrate llm` with no args → interactive UI
     # `calibrate llm -c config.json -m model ...` → single model (run_tests.py)
     # `calibrate llm -c config.json -m model1 model2 ...` → multi-model (benchmark.py)
+    # `calibrate llm --verify --agent-url URL` → verify external agent connection
     llm_parser = subparsers.add_parser(
         "llm",
         help="LLM evaluation — test agent responses and tool calls",
@@ -209,9 +252,32 @@ Examples:
         choices=["openai", "openrouter"],
         help="LLM provider",
     )
+    llm_parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Verify an external agent connection by sending a preset message and checking the response format",
+    )
+    llm_parser.add_argument(
+        "--agent-url",
+        type=str,
+        default=None,
+        help="External agent endpoint URL (required with --verify)",
+    )
+    llm_parser.add_argument(
+        "--agent-headers",
+        type=str,
+        default=None,
+        help='HTTP headers for the agent as a JSON string, e.g. \'{"Authorization": "Bearer sk-..."}\'',
+    )
+    llm_parser.add_argument(
+        "--skip-verify",
+        action="store_true",
+        help="Skip agent connection verification (used internally when already verified)",
+    )
     # ── Simulations ─────────────────────────────────────────────
     # `calibrate simulations` with no args → interactive UI
     # `calibrate simulations --type text -c config.json ...` → run directly
+    # `calibrate simulations --verify --agent-url URL` → verify external agent
     sim_parser = subparsers.add_parser(
         "simulations",
         help="Run text or voice simulations",
@@ -234,7 +300,7 @@ Examples:
         "-m",
         "--model",
         type=str,
-        default="gpt-4.1",
+        default=None,
         help="Model name (text simulations)",
     )
     sim_parser.add_argument(
@@ -251,6 +317,23 @@ Examples:
         type=int,
         default=1,
         help="Number of simulations to run in parallel",
+    )
+    sim_parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Verify an external agent connection by sending a preset message and checking the response format",
+    )
+    sim_parser.add_argument(
+        "--agent-url",
+        type=str,
+        default=None,
+        help="External agent endpoint URL (required with --verify)",
+    )
+    sim_parser.add_argument(
+        "--agent-headers",
+        type=str,
+        default=None,
+        help='HTTP headers for the agent as a JSON string, e.g. \'{"Authorization": "Bearer sk-..."}\'',
     )
 
     # Hidden internal subcommand for simulation leaderboard
@@ -338,28 +421,113 @@ Examples:
             _launch_ink_ui("tts")
 
     elif args.component == "llm":
-        if args.config is None:
+        if getattr(args, "verify", False):
+            if not args.agent_url:
+                print("Error: --agent-url is required with --verify")
+                sys.exit(1)
+            _run_agent_verify(
+                args.agent_url,
+                args.agent_headers,
+                models=args.model,
+            )
+        elif args.config is None:
             # No config → interactive mode
             _launch_ink_ui("llm")
         else:
             # Direct mode: run tests with provided config
-            from calibrate.llm.benchmark import main as llm_benchmark_main
+            import json as _json
 
-            models = (
-                args.model if args.model else ["gpt-4.1"]
-            )  # Default to gpt-4.1 if not specified
+            with open(args.config) as _f:
+                _config = _json.load(_f)
 
-            argv = ["calibrate", "-c", args.config]
-            argv.extend(["-o", args.output_dir])
-            argv.extend(["-m"] + models)
-            argv.extend(["-p", args.provider])
+            if _config.get("agent_url"):
+                # Agent connection path
+                from calibrate.connections import TextAgentConnection
+                from calibrate.llm import tests as _tests
 
-            sys.argv = argv
-            asyncio.run(llm_benchmark_main())
+                _agent = TextAgentConnection(
+                    url=_config["agent_url"],
+                    headers=_config.get("agent_headers"),
+                )
+                _models = args.model if args.model else []
+
+                # Verify once per model (skip if already verified upstream e.g. interactive UI)
+                if not getattr(args, "skip_verify", False):
+                    _models_to_verify = _models if _models else [None]
+                    for _m in _models_to_verify:
+                        _label = f"model: {_m}" if _m else "connection"
+                        print(f"\nVerifying agent {_label}: {_config['agent_url']}")
+                        _verify_result = asyncio.run(_agent.verify(model=_m))
+                        if not _verify_result["ok"]:
+                            print(f"✗ Verification failed: {_verify_result['error']}")
+                            if "details" in _verify_result:
+                                print(f"  Details: {_verify_result['details']}")
+                            sys.exit(1)
+                        print(f"✓ Verified\n")
+
+                from calibrate.llm.tests_leaderboard import generate_leaderboard
+                from calibrate.llm._output import print_benchmark_summary
+
+                # Run — one model at a time so output is clearly separated
+                if _models:
+                    _model_results = {}
+                    for _m in _models:
+                        print(f"\n\033[92m{'='*60}\033[0m")
+                        print(f"\033[92m  Model: {_m}\033[0m")
+                        print(f"\033[92m{'='*60}\033[0m\n")
+                        _result = asyncio.run(
+                            _tests.run(
+                                agent=_agent,
+                                test_cases=_config["test_cases"],
+                                output_dir=args.output_dir,
+                                models=[_m],
+                            )
+                        )
+                        _model_results[_m] = _result.get(_m, _result)
+
+                    _lb_dir = os.path.join(args.output_dir, "leaderboard")
+                    generate_leaderboard(output_dir=args.output_dir, save_dir=_lb_dir)
+                    _has_errors = print_benchmark_summary(
+                        models=_models,
+                        model_results=_model_results,
+                        leaderboard_dir=_lb_dir,
+                    )
+                    if _has_errors:
+                        sys.exit(1)
+                else:
+                    asyncio.run(
+                        _tests.run(
+                            agent=_agent,
+                            test_cases=_config["test_cases"],
+                            output_dir=args.output_dir,
+                        )
+                    )
+            else:
+                from calibrate.llm.benchmark import main as llm_benchmark_main
+
+                models = args.model if args.model else ["gpt-4.1"]
+
+                argv = ["calibrate", "-c", args.config]
+                argv.extend(["-o", args.output_dir])
+                argv.extend(["-m"] + models)
+                argv.extend(["-p", args.provider])
+
+                sys.argv = argv
+                asyncio.run(llm_benchmark_main())
 
     elif args.component == "simulations":
+        if getattr(args, "verify", False):
+            if not args.agent_url:
+                print("Error: --agent-url is required with --verify")
+                sys.exit(1)
+            _model_str = getattr(args, "model", None)
+            _run_agent_verify(
+                args.agent_url,
+                args.agent_headers,
+                models=[_model_str] if _model_str else None,
+            )
         # Hidden leaderboard subcommand (used by Ink UI)
-        if getattr(args, "sim_subcmd", None) == "leaderboard":
+        elif getattr(args, "sim_subcmd", None) == "leaderboard":
             from calibrate.llm.simulation_leaderboard import (
                 main as leaderboard_main,
             )
@@ -383,6 +551,26 @@ Examples:
             _launch_ink_ui("simulations")
         elif args.type == "text":
             from calibrate.llm.run_simulation import main as llm_simulation_main
+
+            # Pre-verify agent connection if config has agent_url
+            if args.config:
+                import json as _json
+                with open(args.config) as _f:
+                    _sim_config = _json.load(_f)
+                if _sim_config.get("agent_url"):
+                    from calibrate.connections import TextAgentConnection
+                    _sim_agent = TextAgentConnection(
+                        url=_sim_config["agent_url"],
+                        headers=_sim_config.get("agent_headers"),
+                    )
+                    print(f"\nVerifying agent connection: {_sim_config['agent_url']}")
+                    _verify = asyncio.run(_sim_agent.verify())
+                    if not _verify["ok"]:
+                        print(f"✗ Verification failed: {_verify['error']}")
+                        if "details" in _verify:
+                            print(f"  Details: {_verify['details']}")
+                        sys.exit(1)
+                    print("✓ Verified\n")
 
             sys.argv = ["calibrate"] + _args_to_argv(
                 args, exclude_keys={"component", "sim_subcmd", "type"}

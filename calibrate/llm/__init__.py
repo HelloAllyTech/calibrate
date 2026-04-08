@@ -57,7 +57,10 @@ Library Usage:
     simulations.leaderboard(output_dir="./out", save_dir="./leaderboard")
 """
 
-from typing import Literal, Optional, List, Dict, Any
+from typing import Literal, Optional, List, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from calibrate.connections import TextAgentConnection
 import os
 import json
 import asyncio
@@ -78,19 +81,30 @@ class _Tests:
         model: str,
         provider: str,
         run_name: Optional[str] = None,
+        agent: Optional["TextAgentConnection"] = None,
     ) -> dict:
-        """Run tests for a single model."""
-        from calibrate.llm.run_tests import run_test as _run_test
+        """Run tests for a single model (or external agent)."""
+        from calibrate.llm.run_tests import run_test as _run_test, run_test_external as _run_test_external
         from calibrate.utils import configure_print_logger, log_and_print
 
         # Create output directory
-        save_folder_name = f"{provider}/{model}" if provider == "openai" else f"{model}"
-        save_folder_name = save_folder_name.replace("/", "__")
-
-        if run_name:
-            final_output_dir = os.path.join(output_dir, run_name, save_folder_name)
+        if agent is not None and model:
+            # Benchmarking with agent: use model name as subfolder so leaderboard works.
+            save_folder_name = model.replace("/", "__")
+            if run_name:
+                final_output_dir = os.path.join(output_dir, run_name, save_folder_name)
+            else:
+                final_output_dir = os.path.join(output_dir, save_folder_name)
+        elif agent is not None:
+            # Single agent connection run: save directly to output_dir (no subfolder).
+            final_output_dir = os.path.join(output_dir, run_name) if run_name else output_dir
         else:
-            final_output_dir = os.path.join(output_dir, save_folder_name)
+            save_folder_name = f"{provider}/{model}" if provider == "openai" else f"{model}"
+            save_folder_name = save_folder_name.replace("/", "__")
+            if run_name:
+                final_output_dir = os.path.join(output_dir, run_name, save_folder_name)
+            else:
+                final_output_dir = os.path.join(output_dir, save_folder_name)
 
         os.makedirs(final_output_dir, exist_ok=True)
 
@@ -107,17 +121,28 @@ class _Tests:
         results = []
         results_file_path = os.path.join(final_output_dir, "results.json")
 
+        # Pass model name to agent for benchmark routing; None for single runs.
+        agent_model_hint: Optional[str] = model if (agent is not None and model) else None
+
         for test_case_index, test_case in enumerate(test_cases):
-            agent_language = test_case.get("settings", {}).get("language", "english")
-            result = await _run_test(
-                chat_history=test_case["history"],
-                evaluation=test_case["evaluation"],
-                system_prompt=system_prompt
-                + f"\n\nYou must always speak in {agent_language}.",
-                model=model,
-                provider=provider,
-                tools=tools,
-            )
+            if agent is not None:
+                result = await _run_test_external(
+                    chat_history=test_case["history"],
+                    evaluation=test_case["evaluation"],
+                    agent=agent,
+                    model=agent_model_hint,
+                )
+            else:
+                agent_language = test_case.get("settings", {}).get("language", "english")
+                result = await _run_test(
+                    chat_history=test_case["history"],
+                    evaluation=test_case["evaluation"],
+                    system_prompt=system_prompt
+                    + f"\n\nYou must always speak in {agent_language}.",
+                    model=model,
+                    provider=provider,
+                    tools=tools,
+                )
 
             if result["metrics"]["passed"]:
                 log_and_print(f"✅ Test case {test_case_index + 1} passed")
@@ -169,31 +194,39 @@ class _Tests:
 
     @staticmethod
     async def run(
-        system_prompt: str,
-        tools: List[dict],
         test_cases: List[dict],
+        system_prompt: str = "",
+        tools: List[dict] = None,
         output_dir: str = "./out",
         models: Optional[List[str]] = None,
         model: str = "gpt-4.1",
         provider: Literal["openai", "openrouter"] = "openrouter",
         run_name: Optional[str] = None,
         max_parallel: int = 2,
+        agent: Optional["TextAgentConnection"] = None,
     ) -> dict:
         """
         Run LLM tests with the given configuration.
 
-        Supports running tests across multiple models in parallel.
+        Pass ``agent`` to evaluate an external text agent instead of an internal
+        LLM. When ``agent`` is provided, ``system_prompt``, ``tools``, ``model``,
+        and ``provider`` are ignored.
+
+        Supports running tests across multiple models in parallel (ignored when
+        ``agent`` is provided).
 
         Args:
-            system_prompt: System prompt for the LLM
-            tools: List of tool definitions available to the LLM
             test_cases: List of test case dicts, each containing 'history', 'evaluation', and optional 'settings'
+            system_prompt: System prompt for the LLM (ignored when agent is provided)
+            tools: List of tool definitions available to the LLM (ignored when agent is provided)
             output_dir: Path to output directory for results (default: ./out)
             models: List of model names to evaluate (if provided, runs in parallel)
             model: Single model name to use (used if models is not provided)
             provider: LLM provider (openai or openrouter)
             run_name: Optional name for this run (used in output folder name)
             max_parallel: Maximum number of models to run in parallel (default: 2)
+            agent: Optional external agent connection. When provided, routes all
+                test cases to the external agent instead of an internal LLM.
 
         Returns:
             dict: Results containing test outcomes and metrics for all models
@@ -201,21 +234,56 @@ class _Tests:
         Example:
             >>> import asyncio
             >>> from calibrate.llm import tests
-            >>> # Single model
+            >>> # Internal model
             >>> result = asyncio.run(tests.run(
             ...     system_prompt="You are a helpful assistant...",
             ...     tools=[...],
             ...     test_cases=[...],
             ...     model="gpt-4.1"
             ... ))
-            >>> # Multiple models in parallel
+            >>> # External agent
+            >>> from calibrate.connections import TextAgentConnection
             >>> result = asyncio.run(tests.run(
-            ...     system_prompt="You are a helpful assistant...",
-            ...     tools=[...],
+            ...     agent=TextAgentConnection(url="https://your-agent.com/chat"),
             ...     test_cases=[...],
-            ...     models=["gpt-4.1", "claude-3.5-sonnet", "gemini-2.0-flash"]
             ... ))
         """
+        tools = tools or []
+
+        # External agent benchmark: run once per model, passing model hint in each request
+        if agent is not None and models and len(models) > 0:
+            semaphore = asyncio.Semaphore(max_parallel)
+
+            async def run_agent_model(m: str) -> dict:
+                async with semaphore:
+                    return await _Tests._run_single_model(
+                        system_prompt="",
+                        tools=[],
+                        test_cases=test_cases,
+                        output_dir=output_dir,
+                        model=m,
+                        provider=provider,
+                        run_name=run_name,
+                        agent=agent,
+                    )
+
+            results = await asyncio.gather(*[run_agent_model(m) for m in models])
+            return {m: r for m, r in zip(models, results)}
+
+        # External agent: single run (no model selection) — pass empty model so
+        # no model — save directly to output_dir (no subfolder)
+        if agent is not None:
+            return await _Tests._run_single_model(
+                system_prompt=system_prompt,
+                tools=tools,
+                test_cases=test_cases,
+                output_dir=output_dir,
+                model="",
+                provider=provider,
+                run_name=run_name,
+                agent=agent,
+            )
+
         # If models list is provided, run in parallel
         if models and len(models) > 0:
             semaphore = asyncio.Semaphore(max_parallel)
@@ -265,47 +333,40 @@ class _Tests:
 
     @staticmethod
     async def run_single(
-        system_prompt: str,
-        tools: List[dict],
         test_cases: List[dict],
+        system_prompt: str = "",
+        tools: List[dict] = None,
         output_dir: str = "./out",
         model: str = "gpt-4.1",
         provider: Literal["openai", "openrouter"] = "openrouter",
         run_name: Optional[str] = None,
+        agent: Optional["TextAgentConnection"] = None,
     ) -> dict:
         """
-        Run LLM tests for a single model (no leaderboard).
+        Run LLM tests for a single model or external agent (no leaderboard).
 
         Args:
-            system_prompt: System prompt for the LLM
-            tools: List of tool definitions available to the LLM
             test_cases: List of test case dicts
+            system_prompt: System prompt for the LLM (ignored when agent is provided)
+            tools: List of tool definitions available to the LLM (ignored when agent is provided)
             output_dir: Path to output directory for results (default: ./out)
             model: Model name to use
             provider: LLM provider (openai or openrouter)
             run_name: Optional name for this run (used in output folder name)
+            agent: Optional external agent connection.
 
         Returns:
             dict: Results containing test outcomes and metrics
-
-        Example:
-            >>> import asyncio
-            >>> from calibrate.llm import tests
-            >>> result = asyncio.run(tests.run_single(
-            ...     system_prompt="You are a helpful assistant...",
-            ...     tools=[...],
-            ...     test_cases=[...],
-            ...     model="gpt-4.1"
-            ... ))
         """
         return await _Tests._run_single_model(
             system_prompt=system_prompt,
-            tools=tools,
+            tools=tools or [],
             test_cases=test_cases,
             output_dir=output_dir,
             model=model,
             provider=provider,
             run_name=run_name,
+            agent=agent,
         )
 
     @staticmethod
@@ -407,14 +468,25 @@ class _Simulations:
         parallel: int,
         agent_speaks_first: bool,
         max_turns: int,
+        agent: Optional["TextAgentConnection"] = None,
+        _flat_output: bool = False,
     ) -> dict:
-        """Run simulations for a single model."""
+        """Run simulations for a single model or external agent.
+
+        Args:
+            _flat_output: When True, save results directly to output_dir instead of
+                a model-specific subfolder. Used by the single-model path in run()
+                for backward compatibility.
+        """
         from calibrate.llm.run_simulation import run_single_simulation_task
 
-        # Create model-specific output directory
-        save_folder_name = f"{provider}/{model}" if provider == "openai" else f"{model}"
-        save_folder_name = save_folder_name.replace("/", "__")
-        final_output_dir = os.path.join(output_dir, save_folder_name)
+        # Create output directory — flat for single-model runs, model-scoped for benchmarks
+        if _flat_output:
+            final_output_dir = output_dir
+        else:
+            save_folder_name = f"{provider}/{model}" if provider == "openai" else f"{model}"
+            save_folder_name = save_folder_name.replace("/", "__")
+            final_output_dir = os.path.join(output_dir, save_folder_name)
 
         os.makedirs(final_output_dir, exist_ok=True)
 
@@ -455,6 +527,7 @@ class _Simulations:
                     scenario=scenario,
                     output_dir=final_output_dir,
                     args=args,
+                    agent=agent,
                 )
                 tasks.append(task)
 
@@ -505,11 +578,11 @@ class _Simulations:
 
     @staticmethod
     async def run(
-        system_prompt: str,
-        tools: List[dict],
         personas: List[dict],
         scenarios: List[dict],
         evaluation_criteria: List[dict],
+        system_prompt: str = "",
+        tools: List[dict] = None,
         output_dir: str = "./out",
         models: Optional[List[str]] = None,
         model: str = "gpt-4.1",
@@ -518,18 +591,21 @@ class _Simulations:
         agent_speaks_first: bool = True,
         max_turns: int = 50,
         max_parallel_models: int = 2,
+        agent: Optional["TextAgentConnection"] = None,
     ) -> dict:
         """
         Run LLM simulations with the given configuration.
 
-        Supports running simulations across multiple models in parallel.
+        Pass ``agent`` to simulate against an external text agent instead of an
+        internal LLM. When ``agent`` is provided, ``system_prompt``, ``tools``,
+        ``model``, ``provider``, and ``models`` are ignored.
 
         Args:
-            system_prompt: System prompt for the bot/agent
-            tools: List of tool definitions available to the agent
             personas: List of persona dicts with 'characteristics', 'gender', 'language'
             scenarios: List of scenario dicts with 'description'
             evaluation_criteria: List of criteria dicts with 'name' and 'description'
+            system_prompt: System prompt for the bot/agent (ignored when agent is provided)
+            tools: List of tool definitions available to the agent (ignored when agent is provided)
             output_dir: Path to output directory for results (default: ./out)
             models: List of model names to evaluate (if provided, runs in parallel)
             model: Single model name to use (used if models is not provided)
@@ -538,6 +614,7 @@ class _Simulations:
             agent_speaks_first: Whether the agent initiates the conversation (default: True)
             max_turns: Maximum number of assistant turns (default: 50)
             max_parallel_models: Maximum number of models to run in parallel (default: 2)
+            agent: Optional external agent connection.
 
         Returns:
             dict: Results containing simulation outcomes and metrics
@@ -545,7 +622,7 @@ class _Simulations:
         Example:
             >>> import asyncio
             >>> from calibrate.llm import simulations
-            >>> # Single model
+            >>> # Internal model
             >>> result = asyncio.run(simulations.run(
             ...     system_prompt="You are a helpful nurse...",
             ...     tools=[...],
@@ -554,17 +631,34 @@ class _Simulations:
             ...     evaluation_criteria=[...],
             ...     model="gpt-4.1"
             ... ))
-            >>> # Multiple models in parallel
+            >>> # External agent
+            >>> from calibrate.connections import TextAgentConnection
             >>> result = asyncio.run(simulations.run(
-            ...     system_prompt="You are a helpful nurse...",
-            ...     tools=[...],
+            ...     agent=TextAgentConnection(url="https://your-agent.com/chat"),
             ...     personas=[...],
             ...     scenarios=[...],
             ...     evaluation_criteria=[...],
-            ...     models=["gpt-4.1", "claude-3.5-sonnet", "gemini-2.0-flash"]
             ... ))
         """
+        tools = tools or []
         os.makedirs(output_dir, exist_ok=True)
+
+        # External agent: single run, no multi-model loop
+        if agent is not None:
+            return await _Simulations._run_single_model(
+                system_prompt=system_prompt,
+                tools=tools,
+                personas=personas,
+                scenarios=scenarios,
+                evaluation_criteria=evaluation_criteria,
+                output_dir=output_dir,
+                model=model,
+                provider=provider,
+                parallel=parallel,
+                agent_speaks_first=agent_speaks_first,
+                max_turns=max_turns,
+                agent=agent,
+            )
 
         # If models list is provided, run in parallel
         if models and len(models) > 0:
@@ -606,138 +700,7 @@ class _Simulations:
                 "models": results_by_model,
             }
 
-        # Single model - use original behavior (output directly to output_dir for backward compatibility)
-        from calibrate.llm.run_simulation import run_single_simulation_task
-
-        # Build config dict for run_single_simulation_task
-        config = {
-            "system_prompt": system_prompt,
-            "tools": tools,
-            "personas": personas,
-            "scenarios": scenarios,
-            "evaluation_criteria": evaluation_criteria,
-            "settings": {
-                "agent_speaks_first": agent_speaks_first,
-                "max_turns": max_turns,
-            },
-        }
-
-        # Create a mock args object
-        class Args:
-            pass
-
-        args = Args()
-        args.model = model
-        args.provider = provider
-
-        # Create semaphore for parallel execution
-        sim_semaphore = asyncio.Semaphore(parallel)
-
-        # Create all simulation tasks
-        tasks = []
-        for persona_index, user_persona in enumerate(personas):
-            for scenario_index, scenario in enumerate(scenarios):
-                task = run_single_simulation_task(
-                    semaphore=sim_semaphore,
-                    config=config,
-                    persona_index=persona_index,
-                    user_persona=user_persona,
-                    scenario_index=scenario_index,
-                    scenario=scenario,
-                    output_dir=output_dir,
-                    args=args,
-                )
-                tasks.append(task)
-
-        # Run all tasks
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Collect metrics
-        metrics_by_criterion = defaultdict(list)
-        all_simulation_metrics = []
-
-        for result in results:
-            if isinstance(result, Exception):
-                continue
-            if result is None:
-                continue
-
-            simulation_metrics, evaluation_results = result
-            if simulation_metrics:
-                all_simulation_metrics.append(simulation_metrics)
-                for eval_result in evaluation_results:
-                    metrics_by_criterion[eval_result["name"]].append(
-                        float(eval_result["value"])
-                    )
-
-        # Compute summary
-        metrics_summary = {}
-        for criterion_name, values in metrics_by_criterion.items():
-            metrics_summary[criterion_name] = {
-                "mean": float(np.mean(values)),
-                "std": float(np.std(values)),
-                "values": values,
-            }
-
-        # Save results
-        if all_simulation_metrics:
-            df = pd.DataFrame(all_simulation_metrics)
-            df.to_csv(os.path.join(output_dir, "results.csv"), index=False)
-
-        with open(os.path.join(output_dir, "metrics.json"), "w") as f:
-            json.dump(metrics_summary, f, indent=4)
-
-        return {
-            "status": "completed",
-            "output_dir": output_dir,
-            "metrics": metrics_summary,
-        }
-
-    @staticmethod
-    async def run_single(
-        system_prompt: str,
-        tools: List[dict],
-        personas: List[dict],
-        scenarios: List[dict],
-        evaluation_criteria: List[dict],
-        output_dir: str = "./out",
-        model: str = "gpt-4.1",
-        provider: Literal["openai", "openrouter"] = "openrouter",
-        parallel: int = 1,
-        agent_speaks_first: bool = True,
-        max_turns: int = 50,
-    ) -> dict:
-        """
-        Run LLM simulations for a single model (no leaderboard).
-
-        Args:
-            system_prompt: System prompt for the bot/agent
-            tools: List of tool definitions available to the agent
-            personas: List of persona dicts with 'characteristics', 'gender', 'language'
-            scenarios: List of scenario dicts with 'description'
-            evaluation_criteria: List of criteria dicts with 'name' and 'description'
-            output_dir: Path to output directory for results (default: ./out)
-            model: Model name to use
-            provider: LLM provider (openai or openrouter)
-            parallel: Number of simulations to run in parallel (default: 1)
-            agent_speaks_first: Whether the agent initiates the conversation (default: True)
-            max_turns: Maximum number of assistant turns (default: 50)
-
-        Returns:
-            dict: Results containing simulation outcomes and metrics
-
-        Example:
-            >>> import asyncio
-            >>> from calibrate.llm import simulations
-            >>> result = asyncio.run(simulations.run_single(
-            ...     system_prompt="You are a helpful nurse...",
-            ...     tools=[...],
-            ...     personas=[...],
-            ...     scenarios=[...],
-            ...     evaluation_criteria=[...],
-            ...     model="gpt-4.1"
-            ... ))
-        """
+        # Single model — save directly to output_dir (no model subfolder) for backward compatibility
         return await _Simulations._run_single_model(
             system_prompt=system_prompt,
             tools=tools,
@@ -750,6 +713,57 @@ class _Simulations:
             parallel=parallel,
             agent_speaks_first=agent_speaks_first,
             max_turns=max_turns,
+            _flat_output=True,
+        )
+
+    @staticmethod
+    async def run_single(
+        personas: List[dict],
+        scenarios: List[dict],
+        evaluation_criteria: List[dict],
+        system_prompt: str = "",
+        tools: List[dict] = None,
+        output_dir: str = "./out",
+        model: str = "gpt-4.1",
+        provider: Literal["openai", "openrouter"] = "openrouter",
+        parallel: int = 1,
+        agent_speaks_first: bool = True,
+        max_turns: int = 50,
+        agent: Optional["TextAgentConnection"] = None,
+    ) -> dict:
+        """
+        Run LLM simulations for a single model or external agent (no leaderboard).
+
+        Args:
+            personas: List of persona dicts with 'characteristics', 'gender', 'language'
+            scenarios: List of scenario dicts with 'description'
+            evaluation_criteria: List of criteria dicts with 'name' and 'description'
+            system_prompt: System prompt for the bot/agent (ignored when agent is provided)
+            tools: List of tool definitions available to the agent (ignored when agent is provided)
+            output_dir: Path to output directory for results (default: ./out)
+            model: Model name to use
+            provider: LLM provider (openai or openrouter)
+            parallel: Number of simulations to run in parallel (default: 1)
+            agent_speaks_first: Whether the agent initiates the conversation (default: True)
+            max_turns: Maximum number of assistant turns (default: 50)
+            agent: Optional external agent connection.
+
+        Returns:
+            dict: Results containing simulation outcomes and metrics
+        """
+        return await _Simulations._run_single_model(
+            system_prompt=system_prompt,
+            tools=tools or [],
+            personas=personas,
+            scenarios=scenarios,
+            evaluation_criteria=evaluation_criteria,
+            output_dir=output_dir,
+            model=model,
+            provider=provider,
+            parallel=parallel,
+            agent_speaks_first=agent_speaks_first,
+            max_turns=max_turns,
+            agent=agent,
         )
 
     @staticmethod
