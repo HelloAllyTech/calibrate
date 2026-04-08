@@ -325,7 +325,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
       // Always need OPENAI_API_KEY for LLM judge/evaluation
       addIfMissing("OPENAI_API_KEY");
       // Need OPENROUTER_API_KEY if using OpenRouter
-      if (provider === "openrouter") {
+      if (provider === "openrouter" && !isAgentConnection) {
         addIfMissing("OPENROUTER_API_KEY");
       }
     } else if (simType === "voice") {
@@ -489,7 +489,6 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
     Object.assign(env, config.envVars);
     env.PYTHONUNBUFFERED = "1";
 
-    const model = config.models[0] || "gpt-4.1";
     const cmdArgs = [
       ...bin.args,
       "simulations",
@@ -499,11 +498,10 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
       config.configPath,
       "-o",
       config.outputDir,
-      "-m",
-      model,
-      "-p",
-      config.provider,
     ];
+    if (!isAgentConnection) {
+      cmdArgs.push("-m", config.models[0] || "gpt-4.1", "-p", config.provider);
+    }
 
     if (config.parallel > 1) {
       cmdArgs.push("-n", String(config.parallel));

@@ -736,7 +736,7 @@ async def run_single_simulation_task(
                         max_turns=config.get("settings", {}).get(
                             "max_turns", DEFAULT_MAX_TURNS
                         ),
-                        user_model=getattr(args, "model", "gpt-4.1"),
+                        user_model="gpt-4.1",
                         user_provider="openai",
                         output_dir=simulation_output_dir,
                     )
@@ -748,9 +748,9 @@ async def run_single_simulation_task(
                         user_system_prompt=user_system_prompt,
                         evaluation_criteria=config["evaluation_criteria"],
                         bot_model=args.model,
-                        user_model=args.model,
+                        user_model="gpt-4.1",
                         bot_provider=args.provider,
-                        user_provider=args.provider,
+                        user_provider="openai",
                         agent_speaks_first=agent_speaks_first,
                         max_turns=config.get("settings", {}).get(
                             "max_turns", DEFAULT_MAX_TURNS
