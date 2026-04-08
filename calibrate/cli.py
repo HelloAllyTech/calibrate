@@ -520,10 +520,11 @@ Examples:
             if not args.agent_url:
                 print("Error: --agent-url is required with --verify")
                 sys.exit(1)
+            _model_str = getattr(args, "model", None)
             _run_agent_verify(
                 args.agent_url,
                 args.agent_headers,
-                models=getattr(args, "model", None),
+                models=[_model_str] if _model_str else None,
             )
         # Hidden leaderboard subcommand (used by Ink UI)
         elif getattr(args, "sim_subcmd", None) == "leaderboard":
