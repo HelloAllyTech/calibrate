@@ -42,21 +42,19 @@ def _patch_httpx(response_body: dict, status: int = 200):
 
 
 # ---------------------------------------------------------------------------
-# Tests for call_text_agent — model in request body (no provider)
+# Tests for TextAgentConnection.call() — model in request body (no provider)
 # ---------------------------------------------------------------------------
 
 class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
 
     async def test_model_included_in_body(self):
         from calibrate.connections import TextAgentConnection
-        from calibrate.llm.run_tests import call_text_agent
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
         ctx, mock_client = _patch_httpx({"response": "ok"})
         with ctx:
-            await call_text_agent(
+            await agent.call(
                 [{"role": "user", "content": "Hi"}],
-                agent,
                 model="gemma-4-26b-a4b-it",
             )
 
@@ -67,15 +65,11 @@ class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
 
     async def test_model_absent_when_not_passed(self):
         from calibrate.connections import TextAgentConnection
-        from calibrate.llm.run_tests import call_text_agent
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
         ctx, mock_client = _patch_httpx({"response": "ok"})
         with ctx:
-            await call_text_agent(
-                [{"role": "user", "content": "Hi"}],
-                agent,
-            )
+            await agent.call([{"role": "user", "content": "Hi"}])
 
         body = mock_client.post.call_args.kwargs["json"]
         self.assertNotIn("model", body)
@@ -85,14 +79,12 @@ class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
     async def test_model_included_openrouter_format(self):
         """OpenRouter format model string passed as-is (no splitting)."""
         from calibrate.connections import TextAgentConnection
-        from calibrate.llm.run_tests import call_text_agent
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
         ctx, mock_client = _patch_httpx({"response": "ok"})
         with ctx:
-            await call_text_agent(
+            await agent.call(
                 [{"role": "user", "content": "Hi"}],
-                agent,
                 model="google/gemma-4-26b-a4b-it",
             )
 
@@ -107,7 +99,7 @@ class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
 
 class TestRunTestExternalModelParams(unittest.IsolatedAsyncioTestCase):
 
-    async def test_model_passed_to_call_text_agent(self):
+    async def test_model_passed_to_agent_call(self):
         from calibrate.connections import TextAgentConnection
         from calibrate.llm.run_tests import run_test_external
 

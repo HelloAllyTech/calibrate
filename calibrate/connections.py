@@ -205,5 +205,63 @@ class TextAgentConnection:
 
         return {"ok": True}
 
+    async def call(
+        self,
+        messages: list,
+        model: "Optional[str]" = None,
+    ) -> dict:
+        """POST a messages array to the agent endpoint and return its output.
+
+        Args:
+            messages: List of ``{"role": ..., "content": ...}`` dicts.
+            model: Optional model name to include in the request body (for
+                benchmarking, e.g. ``"gemma-4-26b-a4b-it"``).
+
+        Returns:
+            dict with ``response`` (str | None) and ``tool_calls`` (list) keys.
+
+        Raises:
+            RuntimeError: On connection error, timeout, non-200 status, or
+                invalid JSON response.
+        """
+        req_headers = {"Content-Type": "application/json"}
+        if self.headers:
+            req_headers.update(self.headers)
+
+        body: dict = {"messages": messages}
+        if model is not None:
+            body["model"] = model
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    self.url,
+                    json=body,
+                    headers=req_headers,
+                )
+        except httpx.ConnectError as e:
+            raise RuntimeError(f"Could not connect to agent at {self.url}: {e}") from e
+        except httpx.TimeoutException:
+            raise RuntimeError(f"Agent request timed out (60s): {self.url}") from None
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error calling agent at {self.url}: {e}") from e
+
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"Agent returned HTTP {resp.status_code}: {resp.text[:500]}"
+            )
+
+        try:
+            data = resp.json()
+        except Exception:
+            raise RuntimeError(
+                f"Agent response is not valid JSON: {resp.text[:500]}"
+            ) from None
+
+        return {
+            "response": data.get("response"),
+            "tool_calls": data.get("tool_calls", []),
+        }
+
 
 __all__ = ["TextAgentConnection"]

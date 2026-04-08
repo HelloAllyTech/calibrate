@@ -530,7 +530,7 @@ async def run_simulation_with_agent(
 
     The user side is an internal LLM acting as a persona/scenario-driven user.
     The agent side is called via HTTP POST on each turn using
-    :func:`~calibrate.llm.run_tests.call_text_agent`.
+    :meth:`~calibrate.connections.TextAgentConnection.call`.
 
     Args:
         agent: External agent connection.
@@ -546,7 +546,6 @@ async def run_simulation_with_agent(
         dict with ``transcript`` and ``evaluation_results`` keys.
     """
     from openai import AsyncOpenAI as _AsyncOpenAI
-    from calibrate.llm.run_tests import call_text_agent
 
     # User LLM client
     if user_provider == "openrouter":
@@ -565,14 +564,33 @@ async def run_simulation_with_agent(
     transcript: list[dict] = []
     max_turns_reached = False
 
-    def _agent_text(output: dict) -> str:
-        """Extract displayable text from agent output for conversation flow."""
-        return output.get("response") or ""
+    _MAX_TOOL_CALL_RETRIES = 3
+
+    async def _get_agent_response(messages: list) -> Optional[str]:
+        """Call agent, retrying up to 3 times if it responds with tool calls but no text.
+
+        Each tool-call-only response is recorded in messages before retrying so the
+        agent sees its own prior tool calls. Returns None if no text response after
+        3 attempts, logging a warning.
+        """
+        for attempt in range(_MAX_TOOL_CALL_RETRIES):
+            output = await agent.call(messages)
+            if output.get("response"):
+                return output["response"]
+            tool_calls = output.get("tool_calls") or []
+            if tool_calls:
+                messages.append({"role": "assistant", "content": json.dumps(tool_calls)})
+        log_and_print(
+            f"\033[91m[Warning]: Agent made tool calls but returned no text response "
+            f"after {_MAX_TOOL_CALL_RETRIES} attempts. Ending simulation.\033[0m"
+        )
+        return None
 
     if agent_speaks_first:
         agent_messages.append({"role": "user", "content": "Hi"})
-        agent_output = await call_text_agent(agent_messages, agent)
-        agent_text = _agent_text(agent_output)
+        agent_text = await _get_agent_response(agent_messages)
+        if agent_text is None:
+            return {"transcript": transcript, "evaluation_results": []}
         agent_messages.append({"role": "assistant", "content": agent_text})
         transcript.append({"role": "assistant", "content": agent_text})
         log_and_print(f"\033[94m[Agent]: {agent_text}\033[0m")
@@ -592,8 +610,9 @@ async def run_simulation_with_agent(
 
         # --- External agent turn ---
         agent_messages.append({"role": "user", "content": user_message})
-        agent_output = await call_text_agent(agent_messages, agent)
-        agent_text = _agent_text(agent_output)
+        agent_text = await _get_agent_response(agent_messages)
+        if agent_text is None:
+            break
         agent_messages.append({"role": "assistant", "content": agent_text})
         transcript.append({"role": "assistant", "content": agent_text})
         log_and_print(f"\033[94m[Agent]: {agent_text}\033[0m")

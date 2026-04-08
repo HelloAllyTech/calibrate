@@ -10,7 +10,6 @@ import os
 from os.path import join, exists
 import json
 from pathlib import Path
-import httpx
 from calibrate.utils import configure_print_logger, log_and_print, build_tools_schema
 from pipecat.frames.frames import (
     TranscriptionFrame,
@@ -472,61 +471,6 @@ async def run_test(
     }
 
 
-async def call_text_agent(
-    messages: List[dict],
-    agent: "TextAgentConnection",
-    model: Optional[str] = None,
-) -> dict:
-    """POST a messages array to an external agent and return its output.
-
-    Args:
-        messages: List of ``{"role": ..., "content": ...}`` dicts.
-        agent: A :class:`~calibrate.connections.TextAgentConnection`.
-        model: Optional model name for benchmarking (e.g. ``"gemma-4-26b-a4b-it"``).
-
-    Returns:
-        dict with ``response`` (str | None) and ``tool_calls`` (list) keys.
-    """
-    req_headers = {"Content-Type": "application/json"}
-    if agent.headers:
-        req_headers.update(agent.headers)
-
-    body: dict = {"messages": messages}
-    if model is not None:
-        body["model"] = model
-
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                agent.url,
-                json=body,
-                headers=req_headers,
-            )
-    except httpx.ConnectError as e:
-        raise RuntimeError(f"Could not connect to agent at {agent.url}: {e}") from e
-    except httpx.TimeoutException:
-        raise RuntimeError(f"Agent request timed out (60s): {agent.url}") from None
-    except Exception as e:
-        raise RuntimeError(f"Unexpected error calling agent at {agent.url}: {e}") from e
-
-    if resp.status_code != 200:
-        raise RuntimeError(
-            f"Agent returned HTTP {resp.status_code}: {resp.text[:500]}"
-        )
-
-    try:
-        data = resp.json()
-    except Exception:
-        raise RuntimeError(
-            f"Agent response is not valid JSON: {resp.text[:500]}"
-        ) from None
-
-    return {
-        "response": data.get("response"),
-        "tool_calls": data.get("tool_calls", []),
-    }
-
-
 async def run_test_external(
     chat_history: List[dict],
     evaluation: dict,
@@ -539,7 +483,7 @@ async def run_test_external(
     same logic as the internal :func:`run_test`.
 
     The agent must return ``{"response": ..., "tool_calls": [...]}`` — see
-    :func:`call_text_agent` for details.
+    :meth:`~calibrate.connections.TextAgentConnection.call` for details.
 
     Args:
         chat_history: Conversation history (role/content dicts, no system message).
@@ -550,7 +494,7 @@ async def run_test_external(
     Returns:
         dict with ``output`` and ``metrics`` keys.
     """
-    output = await call_text_agent(chat_history, agent, model=model)
+    output = await agent.call(chat_history, model=model)
     response = output.get("response")
     tool_calls = output.get("tool_calls", [])
 

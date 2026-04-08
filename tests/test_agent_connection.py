@@ -44,30 +44,26 @@ def _patch_httpx(response_body: dict, status: int = 200):
 
 
 # ---------------------------------------------------------------------------
-# Tests for call_text_agent
+# Tests for TextAgentConnection.call()
 # ---------------------------------------------------------------------------
 
 class TestCallTextAgent(unittest.IsolatedAsyncioTestCase):
 
     async def test_returns_response_text(self):
         from calibrate.connections import TextAgentConnection
-        from calibrate.llm.run_tests import call_text_agent
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
         fake_body = {"response": "Hello there!", "tool_calls": []}
 
         ctx, mock_client = _patch_httpx(fake_body)
         with ctx:
-            result = await call_text_agent(
-                [{"role": "user", "content": "Hi"}], agent
-            )
+            result = await agent.call([{"role": "user", "content": "Hi"}])
 
         self.assertEqual(result["response"], "Hello there!")
         self.assertEqual(result["tool_calls"], [])
 
     async def test_returns_tool_calls(self):
         from calibrate.connections import TextAgentConnection
-        from calibrate.llm.run_tests import call_text_agent
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
         fake_body = {
@@ -77,9 +73,7 @@ class TestCallTextAgent(unittest.IsolatedAsyncioTestCase):
 
         ctx, _ = _patch_httpx(fake_body)
         with ctx:
-            result = await call_text_agent(
-                [{"role": "user", "content": "Weather in Mumbai?"}], agent
-            )
+            result = await agent.call([{"role": "user", "content": "Weather in Mumbai?"}])
 
         self.assertIsNone(result["response"])
         self.assertEqual(len(result["tool_calls"]), 1)
@@ -87,7 +81,6 @@ class TestCallTextAgent(unittest.IsolatedAsyncioTestCase):
 
     async def test_sends_auth_header(self):
         from calibrate.connections import TextAgentConnection
-        from calibrate.llm.run_tests import call_text_agent
 
         agent = TextAgentConnection(
             url="http://fake-agent/chat",
@@ -96,10 +89,8 @@ class TestCallTextAgent(unittest.IsolatedAsyncioTestCase):
 
         ctx, mock_client = _patch_httpx({"response": "ok"})
         with ctx:
-            await call_text_agent([{"role": "user", "content": "Hi"}], agent)
+            await agent.call([{"role": "user", "content": "Hi"}])
 
-        _, kwargs = mock_client.post.call_args
-        sent_headers = kwargs.get("headers") or mock_client.post.call_args[0][1] if len(mock_client.post.call_args[0]) > 1 else {}
         call_kwargs = mock_client.post.call_args.kwargs
         self.assertIn("Authorization", call_kwargs.get("headers", {}))
         self.assertEqual(call_kwargs["headers"]["Authorization"], "Bearer sk-test")
@@ -107,13 +98,12 @@ class TestCallTextAgent(unittest.IsolatedAsyncioTestCase):
     async def test_missing_keys_default_to_none_and_empty(self):
         """Agent response with neither key — should not crash."""
         from calibrate.connections import TextAgentConnection
-        from calibrate.llm.run_tests import call_text_agent
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
 
         ctx, _ = _patch_httpx({})  # empty body
         with ctx:
-            result = await call_text_agent([{"role": "user", "content": "Hi"}], agent)
+            result = await agent.call([{"role": "user", "content": "Hi"}])
 
         self.assertIsNone(result["response"])
         self.assertEqual(result["tool_calls"], [])

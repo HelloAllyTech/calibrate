@@ -13,9 +13,8 @@ def print_benchmark_summary(
 
     Args:
         models: Ordered list of model names.
-        model_results: Dict of model → result. Accepts both result shapes:
-            - run_model_tests shape: {"passed": N, "total": M}
-            - _run_single_model shape: {"metrics": {"passed": N, "total": M}}
+        model_results: Dict of model → result. Each value must have shape:
+            {"metrics": {"passed": N, "total": M}}
         leaderboard_dir: Path where leaderboard was saved.
         model_label: Optional callable to format display label from model name.
     """
