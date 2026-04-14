@@ -516,6 +516,15 @@ async def run_simulation(
     }
 
 
+def _save_transcript(output_dir: str | None, transcript: list[dict]) -> None:
+    if not output_dir:
+        return
+
+    transcript_path = join(output_dir, "transcript.json")
+    with open(transcript_path, "w") as f:
+        json.dump(transcript, f, indent=4)
+
+
 async def run_simulation_with_agent(
     agent: "TextAgentConnection",
     user_system_prompt: str,
@@ -579,7 +588,9 @@ async def run_simulation_with_agent(
                 return output["response"]
             tool_calls = output.get("tool_calls") or []
             if tool_calls:
-                messages.append({"role": "assistant", "content": json.dumps(tool_calls)})
+                messages.append(
+                    {"role": "assistant", "content": json.dumps(tool_calls)}
+                )
         log_and_print(
             f"\033[91m[Warning]: Agent made tool calls but returned no text response "
             f"after {_MAX_TOOL_CALL_RETRIES} attempts. Ending simulation.\033[0m"
@@ -607,6 +618,7 @@ async def run_simulation_with_agent(
         user_messages.append({"role": "assistant", "content": user_message})
         transcript.append({"role": "user", "content": user_message})
         log_and_print(f"\033[93m[User]: {user_message}\033[0m")
+        _save_transcript(output_dir, transcript)
 
         # --- External agent turn ---
         agent_messages.append({"role": "user", "content": user_message})
@@ -616,6 +628,7 @@ async def run_simulation_with_agent(
         agent_messages.append({"role": "assistant", "content": agent_text})
         transcript.append({"role": "assistant", "content": agent_text})
         log_and_print(f"\033[94m[Agent]: {agent_text}\033[0m")
+        _save_transcript(output_dir, transcript)
 
         # Prepare user simulator for next turn
         user_messages.append({"role": "user", "content": agent_text})
@@ -626,11 +639,7 @@ async def run_simulation_with_agent(
     if max_turns_reached:
         transcript.append({"role": "end_reason", "content": "max_turns"})
 
-    # Save intermediate transcript
-    if output_dir:
-        transcript_path = join(output_dir, "transcript.json")
-        with open(transcript_path, "w") as f:
-            json.dump(transcript, f, indent=4)
+    _save_transcript(output_dir, transcript)
 
     log_and_print(
         f"Evaluating the conversation based on the criteria:\n\n{evaluation_criteria}"
@@ -857,6 +866,7 @@ async def main():
     agent = None
     if config.get("agent_url"):
         from calibrate.connections import TextAgentConnection
+
         agent = TextAgentConnection(
             url=config["agent_url"],
             headers=config.get("agent_headers"),
