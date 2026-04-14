@@ -595,7 +595,7 @@ Examples:
                     print()
 
             sys.argv = ["calibrate"] + _args_to_argv(
-                args, exclude_keys={"component", "sim_subcmd", "type"}
+                args, exclude_keys={"component", "sim_subcmd", "type", "skip_verify"}
             )
             asyncio.run(llm_simulation_main())
         elif args.type == "voice":
