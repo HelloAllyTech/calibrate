@@ -285,6 +285,14 @@ calibrate simulations --type text -c config.json -o ./out -n 2
 
 Simulations run for every persona × scenario combination. For example, 2 personas × 2 scenarios = 4 simulations.
 
+**Skip verification:**
+
+For agent connection configs, calibrate verifies the connection before running. Pass `--skip-verify` to skip this step — useful in CI/automation pipelines where you've already confirmed the agent is reachable:
+
+```bash
+calibrate simulations --type text -c config.json -o ./out --skip-verify
+```
+
 ## Output
 
 Once all simulated conversations complete, it displays the overall metrics aggregated across all simulations along with bar charts for visualization.

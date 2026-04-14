@@ -382,6 +382,18 @@ calibrate llm -c config.json -m gemma-4-26b-a4b-it gpt-4o -o ./out
 
 Each model gets its own results folder, and a summary with pass rates for all models is printed at the end.
 
+**Skip verification:**
+
+Pass `--skip-verify` to skip the agent connection verification step. This is useful in CI/automation pipelines where you've already confirmed the agent is reachable:
+
+```bash
+calibrate llm -c config.json -o ./out --skip-verify
+```
+
+```bash
+calibrate llm -c config.json -m gemma-4-26b-a4b-it gpt-4o -o ./out --skip-verify
+```
+
 ## Output
 
 Once all the models have completed, it displays a leaderboard with pass rates (% of tests passed) and bar charts for visualization.
