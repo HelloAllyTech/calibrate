@@ -213,8 +213,8 @@ class Processor(FrameProcessor):
 
         if self._conversation_state and self._role == "agent":
             should_continue = await self._conversation_state.record_turn()
-            # Save intermediate transcript after each agent turn
-            self._save_intermediate_transcript()
+
+        self._save_intermediate_transcript()
 
         await self._forward_to_partner(response, run_partner=should_continue)
 
