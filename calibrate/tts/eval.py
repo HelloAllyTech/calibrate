@@ -702,7 +702,7 @@ async def run_single_provider_eval(
     df = pd.read_csv(input_file)
 
     ids = df["id"].tolist()
-    texts = df["text"].tolist()
+    texts = df["text"].astype(str).tolist()
 
     if debug:
         ids = ids[:debug_count]
@@ -739,7 +739,7 @@ async def run_single_provider_eval(
     if exists(results_csv_path):
         final_df = pd.read_csv(results_csv_path)
         all_ids = final_df["id"].tolist()
-        all_texts = final_df["text"].tolist()
+        all_texts = final_df["text"].astype(str).tolist()
         all_audio_paths = final_df["audio_path"].tolist()
         all_ttfb = final_df["ttfb"].tolist()
     else:

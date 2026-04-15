@@ -841,8 +841,8 @@ async def run_single_provider_eval(
     # Load final results for metrics
     results_df = pd.read_csv(results_csv_path)
     all_ids = results_df["id"].tolist()
-    all_gt_transcripts = results_df["gt"].tolist()
-    all_pred_transcripts = results_df["pred"].fillna("").tolist()
+    all_gt_transcripts = results_df["gt"].astype(str).tolist()
+    all_pred_transcripts = results_df["pred"].fillna("").astype(str).tolist()
 
     logger.info(f"gt_transcripts: {all_gt_transcripts}")
     logger.info(f"pred_transcripts: {all_pred_transcripts}")

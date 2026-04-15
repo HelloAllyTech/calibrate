@@ -14,10 +14,8 @@ normalizer = BasicTextNormalizer()
 def get_wer_score(references: List[str], predictions: List[str]) -> float:
     wer_metric = load("wer")
 
-    references = [normalizer(ref) for ref in references]
-    predictions = [
-        normalizer(pred) if isinstance(pred, str) else "" for pred in predictions
-    ]
+    references = [normalizer(str(ref)) for ref in references]
+    predictions = [normalizer(str(pred)) if isinstance(pred, str) else "" for pred in predictions]
 
     per_row_wer = [
         wer_metric.compute(predictions=[p], references=[r])
@@ -34,8 +32,8 @@ def get_string_similarity(references: List[str], predictions: List[str]) -> floa
     for reference, prediction in zip(references, predictions):
         seq = difflib.SequenceMatcher(
             None,
-            normalizer(reference),
-            normalizer(prediction) if isinstance(prediction, str) else "",
+            normalizer(str(reference)),
+            normalizer(str(prediction)) if isinstance(prediction, str) else "",
         )
         similarities.append(seq.ratio())  # value between 0 and 1
 
@@ -112,7 +110,7 @@ async def get_llm_judge_score(references: List[str], predictions: List[str]) -> 
     coroutines = []
 
     for reference, prediction in zip(references, predictions):
-        coroutines.append(stt_llm_judge(reference, prediction))
+        coroutines.append(stt_llm_judge(str(reference), str(prediction)))
 
     results = await tqdm_asyncio.gather(
         *coroutines,
