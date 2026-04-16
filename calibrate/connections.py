@@ -137,7 +137,7 @@ class TextAgentConnection:
         if resp.status_code != 200:
             return {
                 "ok": False,
-                "error": f"Endpoint returned HTTP {resp.status_code}",
+                "error": f"Endpoint returned HTTP {resp.status_code}: {resp.text[:500]}",
             }
 
         # ── 3. Valid JSON ─────────────────────────────────────────────────
@@ -256,7 +256,9 @@ class TextAgentConnection:
         except httpx.TimeoutException:
             raise RuntimeError(f"Agent request timed out (60s): {self.url}") from None
         except Exception as e:
-            raise RuntimeError(f"Unexpected error calling agent at {self.url}: {e}") from e
+            raise RuntimeError(
+                f"Unexpected error calling agent at {self.url}: {e}"
+            ) from e
 
         if resp.status_code != 200:
             raise RuntimeError(
