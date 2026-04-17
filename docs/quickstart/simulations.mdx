@@ -7,16 +7,30 @@ description: "Run simulated conversations with your agents"
 
 ## Create an agent
 
-From the sidebar, click **Agents** → **New agent**. Configure your agent and add [tools](/core-concepts/tools) to it.
-
-<Tip>
-  Learn more about agent configuration in [Core Concepts:
-  Agents](/core-concepts/agents)
-</Tip>
+From the sidebar, click **Agents** → **New agent**. You have two options for setting up your agent:
 
 <Frame>
-  <img src="./images/sim_agent.png" alt="Agent Configuration" />
+  <img src="./images/agent-choice.png" alt="New Agent Dialog" />
 </Frame>
+
+<AccordionGroup>
+  <Accordion title="Build your agent in Calibrate" icon="flask" defaultOpen>
+    Configure the LLM/STT/TTS models, set instructions, and define the tools your agent can use — all within Calibrate. 
+    
+    See our [Core Concepts: Agents](/core-concepts/agents) guide for the full setup.
+
+  </Accordion>
+  <Accordion title="Connect your existing agent" icon="link">
+    If you already have a deployed agent, you can connect it to Calibrate via its HTTP endpoint. Calibrate will call your agent directly to run simulations.
+
+    See our [Core Concepts: Agent Connections](/core-concepts/agent-connections) guide for the full setup.
+
+    <Note>
+      Agent connections support **text simulations** only. For **voice simulations** (with STT/TTS latency metrics), use an agent built within Calibrate with STT and TTS providers configured.
+    </Note>
+
+  </Accordion>
+</AccordionGroup>
 
 ## Create personas
 
@@ -127,6 +141,13 @@ The **Overall metrics** show the aggregated values for each metric across all co
 
 ### Voice simulation
 
+<Note>
+  [Agent connections](/core-concepts/agent-connections) support **text
+  simulations** only. For **voice simulations** (with STT/TTS latency metrics),
+  use an agent [built within Calibrate](/core-concepts/agents) with STT and TTS
+  providers configured.
+</Note>
+
 Voice simulations use the full STT/TTS pipeline for more realistic testing. After launching, conversations stream in real-time like text simulations.
 
 <Frame>
@@ -165,6 +186,19 @@ Switch to the **Latency** tab to view detailed timing metrics for each component
   Voice simulations take longer than text simulations due to the full audio
   pipeline, but provide more realistic testing of your agent's voice experience.
 </Tip>
+
+## Sharing simulation results publicly
+
+Once a simulation run completes, you can share the results publicly. Open a completed run and click the **Share** button.
+
+<Frame>
+  <img
+    src="./images/sim_run_share.png"
+    alt="Simulation run with Share button"
+  />
+</Frame>
+
+This toggles the run to **Public** and generates a shareable link. Anyone with the link can view the overall metrics, per-conversation results, and transcripts without needing a Calibrate account. Click the **Public** button again to make the run private.
 
 ## Next steps
 

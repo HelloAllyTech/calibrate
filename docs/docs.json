@@ -32,6 +32,7 @@
               "core-concepts/speech-to-text",
               "core-concepts/text-to-speech",
               "core-concepts/agents",
+              "core-concepts/agent-connections",
               "core-concepts/tools",
 
               "core-concepts/personas",

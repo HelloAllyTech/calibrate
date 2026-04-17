@@ -3,71 +3,133 @@ title: "Text to Speech"
 description: "Learn how to evaluate and compare TTS providers with your data"
 ---
 
-[Calibrate](https://calibrate.artpark.ai) lets you evaluate multiple TTS providers simultaneously using your own dataset. This guide will walk you through creating an evaluation for your dataset.
+[Calibrate](https://calibrate.artpark.ai) lets you evaluate multiple TTS providers simultaneously using your own text samples. This guide will walk you through creating an evaluation, managing reusable datasets, and sharing your results.
 
 <iframe
   className="w-full aspect-video rounded-xl"
   src="https://www.youtube.com/embed/MM8rW0m-Vr0"
-  title="Speech-to-Text Evaluation Walkthrough"
+  title="Text-to-Speech Evaluation Walkthrough"
   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
   allowFullScreen
 ></iframe>
 
 ## Start a new evaluation
 
-From the sidebar, click on **Text to Speech** to view all your evaluations. Click the **New evaluation** button to create a new evaluation.
+From the sidebar, click on **Text-to-Speech** to view all your evaluations and datasets. Click the **New evaluation** button to create a new evaluation.
 
 <Frame>
-  <img src="./images/tts_runs.png" alt="Text to Speech Evaluations List" />
+  <img src="./images/tts_overview.png" alt="Text-to-Speech Evaluations List" />
 </Frame>
 
-## Configure settings
+## Add your dataset
 
-On the **Settings** tab, select the language and providers you want to compare.
-
-<Frame>
-  <img src="./images/tts_new.png" alt="Text to Speech Settings" />
-</Frame>
-
-## Upload your dataset
-
-Switch to the **Dataset** tab to add your text samples for synthesis.
-
-<Frame>
-  <img src="./images/tts_dataset.png" alt="Text to Speech Dataset Upload" />
-</Frame>
-
-You can also bulk upload your dataset as a CSV file with the following format:
-
-```csv
-text
-Hello, how can I help you today?
-Your appointment is confirmed for tomorrow at 3 PM.
-Thank you for calling. Have a great day!
-```
-
-<Tip>
-  Click **Download sample CSV** to get a template with the correct structure
-</Tip>
-
-## Run evaluation
-
-Click the **Evaluate** button to start the evaluation. You'll be redirected to the results page where you can monitor progress in real-time. The **Outputs** tab streams the results for each text sample as it completes for each provider:
-
-<Frame>
-  <img src="./images/tts_outputs.png" alt="Text to Speech Outputs View" />
-</Frame>
-
-## Leaderboard
-
-Once all providers complete, the **Leaderboard** tab shows a comparison across all of them.
+On the **Dataset** tab, choose how to provide your text samples:
 
 <Frame>
   <img
-    src="./images/tts_leaderboard.png"
-    alt="Text to Speech Leaderboard View"
+    src="./images/tts_new_dataset.png"
+    alt="New TTS Evaluation - Dataset Tab"
   />
 </Frame>
+
+<AccordionGroup>
+  <Accordion title="Enter manually" icon="keyboard" defaultOpen>
+    Create a new dataset inline. Give it a name, then add text samples in one of two ways:
+
+    1. **Add samples inline** — Type the text to synthesize in each row. Click **+ Add another row** to add more entries.
+
+    2. **Bulk upload via CSV** — Upload a CSV file with a `text` column:
+
+    ```csv
+    text
+    Hello, how can I help you today?
+    Your appointment is confirmed for tomorrow at 3 PM.
+    Thank you for calling. Have a great day!
+    ```
+
+    <Tip>
+      Click **Download sample** to get a template with the correct format.
+    </Tip>
+
+    <Frame>
+      <img src="./images/tts_dataset_create.png" alt="Use Existing Dataset" />
+    </Frame>
+
+    Your dataset is automatically saved so you can reuse it in future evaluations.
+
+  </Accordion>
+  <Accordion title="Use existing dataset" icon="database">
+    If you've already created a dataset, switch to **Use existing dataset** to pick from your saved datasets.
+
+    <Frame>
+      <img src="./images/tts_existing_dataset.png" alt="Use Existing Dataset" />
+    </Frame>
+
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  You can also create and manage datasets independently from the **Datasets**
+  tab. See [Datasets](/core-concepts/text-to-speech#datasets) to learn how to
+  create reusable datasets and run evaluations directly from them.
+</Tip>
+
+## Configure settings
+
+Switch to the **Settings** tab to select the language and the providers you want to compare:
+
+<Frame>
+  <img
+    src="./images/tts_settings.png"
+    alt="TTS Settings - Language and Providers"
+  />
+</Frame>
+
+Select a **Language** from the dropdown and check the providers you want to evaluate. Each provider shows the model and **Voice ID** it uses.
+
+## Run evaluation
+
+Click the **Evaluate** button at the top to start the evaluation. You'll be redirected to the results page where you can monitor progress in real-time.
+
+## View results
+
+### Outputs
+
+The **Outputs** tab shows per-provider results. Select a provider from the list on the left to see its overall metrics and per-sample results.
+
+<Frame>
+  <img src="./images/tts_outputs.png" alt="TTS Outputs with Audio Playback" />
+</Frame>
+
+Each sample row includes:
+
+- **Text** — The input text you provided
+- **Audio** — An inline audio player to listen to the generated speech
+- **LLM Judge** — Pass/Fail based on audio quality evaluation
+
+### Leaderboard
+
+The **Leaderboard** tab shows a side-by-side comparison across all providers with aggregated metrics and bar charts.
+
+<Frame>
+  <img src="./images/tts_leaderboard.png" alt="TTS Leaderboard" />
+</Frame>
+
+## Sharing results publicly
+
+Once your evaluation completes, you can make the results publicly accessible by clicking the **Share** button on the results page.
+
+<Frame>
+  <img src="./images/tts_share.png" alt="Share button on evaluation results" />
+</Frame>
+
+This toggles the evaluation to **Public** and generates a shareable link. Anyone with the link can view the leaderboard and outputs without needing a Calibrate account.
+
+<Frame>
+  <img src="./images/tts_public.png" alt="Public evaluation with copy link" />
+</Frame>
+
+Click the **Public** button again to make the evaluation private.
 
 ## Next Steps
 
@@ -77,7 +139,14 @@ Once all providers complete, the **Leaderboard** tab shows a comparison across a
     icon="chart-bar"
     href="/core-concepts/text-to-speech"
   >
-    Learn about the core concepts of TTS evaluation
+    Learn about TTS metrics — LLM Judge Score and TTFB
+  </Card>
+  <Card
+    title="Datasets"
+    icon="database"
+    href="/core-concepts/text-to-speech#datasets"
+  >
+    Save and reuse text samples across multiple evaluations
   </Card>
   <Card title="Simulations" icon="microphone" href="/quickstart/simulations">
     Run simulated conversations with your agent

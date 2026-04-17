@@ -9,6 +9,12 @@ An agent is a core building block of Calibrate. Agents can:
 - Respond intelligently using LLM models following the instructions given to them
 - Use tools for structured data extraction
 
+<Tip>
+  Already have a deployed agent? You can connect it to Calibrate via its HTTP
+  endpoint instead of rebuilding it here. See [Agent
+  Connections](/core-concepts/agent-connections) for the setup guide.
+</Tip>
+
 ## Quickstart
 
 ### Navigate to Agents
@@ -21,10 +27,16 @@ From the sidebar, click **Agents** to view your existing agents or create a new 
 
 ### Create a new agent
 
-Click the **New agent** button in the top right corner, fill the name of the agent and hit **Create agent**.
+Click the **New agent** button in the top right corner.
 
 <Frame>
   <img src="./images/agents-2.png" alt="Create Agent" />
+</Frame>
+
+Select **Build your agent in Calibrate**, give it a name, and click Create.
+
+<Frame>
+  <img src="./images/agents-0.png" alt="Create Agent" />
 </Frame>
 
 Once ready, you'll be taken to the agent configuration page with multiple tabs.
@@ -123,10 +135,20 @@ Click **Save** in the top right to save your configuration.
 ## Next Steps
 
 <CardGroup cols={2}>
+  <Card
+    title="Agent Connections"
+    icon="link"
+    href="/core-concepts/agent-connections"
+  >
+    Connect your existing deployed agent to Calibrate
+  </Card>
   <Card title="Run LLM Tests" icon="flask" href="/quickstart/text-to-text">
     Test your agent's responses and tool usage
   </Card>
   <Card title="Run Simulations" icon="play" href="/quickstart/simulations">
     Simulate conversations with the agent to identify issues before deployment
+  </Card>
+  <Card title="Tools" icon="wrench" href="/core-concepts/tools">
+    Define tools for structured data extraction
   </Card>
 </CardGroup>

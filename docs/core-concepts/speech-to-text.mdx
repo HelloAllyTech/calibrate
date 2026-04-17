@@ -59,6 +59,60 @@ Traditional metrics like WER fail in cases where the transcription is semantical
 - Word spacing differences are ignored
 - Actual value differences (names, addresses, key details) are flagged as mismatches
 
+## Datasets
+
+You can save and manage your evaluation data as **datasets** for reuse across multiple evaluations — avoiding re-uploading the same audio files every time.
+
+### View your datasets
+
+From the **Speech-to-Text** page, click the **Datasets** tab.
+
+<Frame>
+  <img src="/quickstart/images/stt_datasets_tab.png" alt="STT Datasets Tab" />
+</Frame>
+
+### Create a dataset
+
+Click **New dataset**, enter a name, and click **Create**.
+
+<Frame>
+  <img src="/quickstart/images/stt_new_dataset_dialog.png" alt="New STT Dataset Dialog" />
+</Frame>
+
+You'll be taken to the dataset detail page where you can add samples in two ways:
+
+<Frame>
+  <img src="/quickstart/images/stt_dataset_detail.png" alt="STT Dataset Detail Page" />
+</Frame>
+
+1. **Add samples inline** — Click **Upload .wav** to attach an audio file and type the reference transcription for each row. Click **+ Add another sample** to add more rows.
+
+2. **Bulk upload via ZIP** — Upload a ZIP file containing an `audios` folder with `.wav` files and a `data.csv` file mapping audio files to their reference transcriptions. Click **Download sample ZIP** to get a template with the correct structure.
+
+Click **Save** to persist your changes.
+
+### Update a dataset
+
+Open an existing dataset from the **Datasets** tab to edit it. You can:
+
+- **Add more samples** — Add new rows inline or upload another ZIP to append more audio samples.
+- **Edit transcriptions** — Click on any reference transcription to update it.
+- **Remove samples** — Click the delete button on a row to remove that sample.
+
+Click **Save** after making changes to persist them.
+
+<Note>
+  Audio files for existing samples cannot be replaced — delete the sample and re-add it with the correct audio if needed.
+</Note>
+
+### Delete a dataset
+
+From the **Datasets** tab, click the delete button next to a dataset to remove it entirely.
+
+### Run an evaluation from a dataset
+
+Once your dataset has samples, click the **New evaluation** button on the dataset page. This pre-selects the dataset and takes you to the evaluation settings where you choose the language and providers to compare.
+
 ## Next Steps
 
 <CardGroup cols={2}>

@@ -1,0 +1,164 @@
+---
+title: "Agent Connections"
+description: "Connect your existing deployed agent to Calibrate"
+---
+
+If you already have a deployed agent, you can connect it to Calibrate and run evaluations, benchmarks, and simulations against it — without rebuilding your agent inside Calibrate.
+
+<Tip>
+  If you don't have an existing agent and want to build one from scratch within
+  Calibrate, see [Core Concepts: Agents](/core-concepts/agents) instead.
+</Tip>
+
+## Create an agent connection
+
+From the sidebar, click **Agents** → **New agent**. Select **Connect your existing agent**, give it a name, and click **Create**.
+
+<Frame>
+  <img
+    src="./images/agent-conn-1.png"
+    alt="New Agent - Connect your existing agent"
+  />
+</Frame>
+
+You will be taken to the new agent page where you configure the connection details.
+
+## Configure your connection
+
+The **Connection** tab lets you set up everything Calibrate needs to communicate with your agent:
+
+<Frame>
+  <img src="./images/agent-conn-2.png" alt="Agent Connection Configuration" />
+</Frame>
+
+Fill in the following:
+
+1. **Agent URL** (required) — The HTTPS endpoint where your agent is deployed (e.g. `https://your-agent.example.com/chat`). Calibrate will send a `POST` request to this URL with conversation messages.
+
+2. **Headers** (optional) — Add any headers your agent needs for authentication or custom metadata (e.g. `Authorization: Bearer YOUR_API_KEY`). Click **+ Add header** to add multiple headers.
+
+## Expected request format
+
+Calibrate will `POST` to your agent URL with this body:
+
+```json
+{
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "Namaste! Main aapki kaise madad kar sakti hoon?"
+    },
+    { "role": "user", "content": "Meri beti ka vaccination schedule kya hai?" }
+  ]
+}
+```
+
+The `messages` array contains the full conversation history in chronological order.
+
+## Expected response format
+
+By default, your agent must respond with a `response` field containing its text reply:
+
+```json
+{
+  "response": "Aapki beti ka agla vaccination 14 weeks pe hai — OPV aur DPT ke liye."
+}
+```
+
+If your agent also returns tool calls, the expected output format expands to include `tool_calls`:
+
+```json
+{
+  "response": "Aapki beti ka agla vaccination 14 weeks pe hai — OPV aur DPT ke liye.",
+  "tool_calls": [
+    { "tool": "get_schedule", "arguments": { "child_age_weeks": 14 } }
+  ]
+}
+```
+
+- `response` — The agent's text reply
+- `tool_calls` — An array of tool invocations, each with a `tool` name and `arguments` object
+
+<Warning>
+  Your agent's output **must** include either a `response` field or a
+  `tool_calls` field
+</Warning>
+
+## Verify your connection
+
+Before running any tests, we need to verify we can connect to your agent and that it returns the output in the correct format.
+
+Click the **Verify** button in the **Connection check** panel. A dialog will open where you can customize the sample request that will be sent to your agent:
+
+<Frame>
+  <img src="./images/agent-conn-3.png" alt="Verify Connection Dialog" />
+</Frame>
+
+- Edit the **Messages** to set the conversation history for the test request.
+- The **Request body preview** on the right updates live so you can see the exact JSON that will be sent.
+- Click **Send & Verify** to send the request to your agent.
+
+After verification:
+
+- ✅ **Verified** — Your agent is reachable and returns the correct format
+- ❌ **Failed** — The panel will show the error along with the actual output received from your agent so you can debug and try again.
+
+<Note>
+  Connection verification is required before running LLM tests, benchmarks or
+  simulations
+</Note>
+
+Even after your agent is verified, if you make any changes to your agent you can come back here and verify the connection again.
+
+## Enable benchmarking across models
+
+Calibrate supports [benchmarking](/quickstart/text-to-text#find-the-best-llm-for-your-agent) different LLMs on your dataset to find the best model for your agent. For this, you need to instrument your agent API to support a `model` field in the request body that Calibrate will send along with the conversation history.
+
+<Warning>
+  Your agent is responsible for reading the `model` parameter and setting the
+  right model to perform the actual inference. Calibrate sends this field but
+  does not control which model your agent uses.
+</Warning>
+
+To get started, turn on **Support benchmarking different models** from the **Connection** tab.
+
+<Frame>
+  <img
+    src="./images/agent-conn-4.png"
+    alt="Agent Connection with Benchmarking Enabled"
+  />
+</Frame>
+
+When enabled:
+
+1. Select your **Model provider** from the dropdown (OpenRouter, OpenAI, Anthropic, Google, etc.). This represents the provider you have configured for your agent on your system.
+2. Calibrate will include a `model` field in the request body:
+
+```json
+{
+  "messages": [...],
+  "model": "openai/gpt-4.1"
+}
+```
+
+Depending on the provider you have selected, the format of the `model` field will be different. For example, if you have selected `OpenRouter`, the `model` field will be `openrouter/gpt-4.1`. If you have selected OpenAI, the `model` field will just be `gpt-4.1`.
+
+3. When running a benchmark via **Compare models**, Calibrate will verify the connection for each selected model before starting the evaluation. See [this](/quickstart/text-to-text#verifying-agent-connection) for details.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Run LLM Tests" icon="list-check" href="/quickstart/text-to-text">
+    Create and run test cases against your agent
+  </Card>
+  <Card
+    title="Find the best LLM"
+    icon="list-check"
+    href="/quickstart/text-to-text#find-the-best-llm-for-your-agent"
+  >
+    Compare the performance of different LLMs on your agent
+  </Card>
+  <Card title="Run Simulations" icon="play" href="/quickstart/simulations">
+    Simulate conversations with realistic personas
+  </Card>
+</CardGroup>
